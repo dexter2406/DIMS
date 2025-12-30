@@ -14,6 +14,45 @@ The project is organized into the following modules:
 - `server/`: Main application entry point, configuration, and logger.
 - `storage/`: Write-Ahead Log (WAL) and recovery logic.
 
+## Installation
+
+To set up the development environment, follow these steps:
+
+### Using uv (Recommended)
+
+1.  **Install uv**: If you don't have `uv` installed, you can get it via `pipx`:
+    ```bash
+    pipx install uv
+    ```
+    Or, if you prefer `pip`:
+    ```bash
+    pip install uv
+    ```
+
+2.  **Create and activate a virtual environment**:
+    ```bash
+    uv venv
+    source .venv/bin/activate  # On Windows, use `.venv\Scripts\activate`
+    ```
+
+3.  **Install dependencies**:
+    ```bash
+    uv pip install -r requirements.txt
+    ```
+
+### Using pip
+
+1.  **Create and activate a virtual environment**:
+    ```bash
+    python -m venv .venv
+    source .venv/bin/activate  # On Windows, use `.venv\Scripts\activate`
+    ```
+
+2.  **Install dependencies**:
+    ```bash
+    pip install -r requirements.txt
+    ```
+
 ## How to Run
 
 ### 1. Start a Single Node (as Leader)
