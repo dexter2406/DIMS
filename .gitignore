@@ -1,0 +1,24 @@
+# Python internals
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual Environment
+.venv/
+venv/
+env/
+
+# Logs and Runtime Data
+*.log
+debug_log/*
+!debug_log/.gitkeep
+data/*.log
+
+# IDE and System files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Tool specific
+.gemini/

@@ -1,0 +1,186 @@
+# server/main.py
+
+"""
+The main entry point for a DIMS node.
+This script initializes all components of a node and starts the required services.
+"""
+import signal
+import time
+import sys
+import os
+
+# Ensure the project root is in the Python path
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+from server.config import config
+from server.logger import log
+from core.state import NodeState, ROLE_LEADER, ROLE_FOLLOWER
+from storage.wal import WriteAheadLog
+from storage.recovery import RecoveryManager
+from network.udp_discovery import DiscoveryListener
+from network.ring import TCPRingServer, TCPRingClient
+from core.replication import ReplicationManager
+from core.election import ElectionManager
+from api.http_server import APIServer
+from common.protocol import parse_message, MSG_REPLICATION, MSG_ELECTION, MSG_HEARTBEAT
+
+class Node:
+    """
+    Represents a single node in the DIMS cluster, encapsulating all its components.
+    """
+    def __init__(self, config):
+        self.config = config
+        self.running = True
+        
+        # 1. Initialize core state and storage
+        log.info(f"Initializing Node {config.node_id}...")
+        self.state = NodeState(config.node_id)
+        self.wal = WriteAheadLog(config.wal_path)
+
+        # 2. Perform recovery from WAL
+        self.recovery_manager = RecoveryManager(self.state, self.wal)
+        self.recovery_manager.recover_state()
+        # After recovery, every node starts as a follower
+        self.state.set_role(ROLE_FOLLOWER)
+        
+        # 3. Initialize networking components
+        # TCP client needs the initial successor address from config
+        if config.successor_addr:
+            host, port = config.successor_addr.split(':')
+            self.state.set_successor((host, int(port)))
+        
+        self.ring_client = TCPRingClient(self.state, config)
+        self.replication_manager = ReplicationManager(self.state, self.ring_client, self.wal)
+        self.election_manager = ElectionManager(self.state, self.ring_client)
+        
+        # The TCP server receives messages and dispatches them via handle_tcp_message
+        self.ring_server = TCPRingServer(config, self.handle_tcp_message)
+        
+        # The UDP server responds to discovery requests
+        self.discovery_listener = DiscoveryListener(self.state, config)
+        
+        # The HTTP server handles client API calls
+        self.http_server = APIServer(config, self.state, self.handle_http_update)
+
+        # List of all running components for easy lifecycle management
+        self.components = [
+            self.ring_server,
+            self.ring_client,
+            self.discovery_listener,
+            self.http_server
+        ]
+
+    def start(self):
+        """Starts all components of the node."""
+        log.info(f"Starting Node {self.config.node_id}...")
+        for component in self.components:
+            component.start()
+            
+        # If no successor is defined, this node is alone and should become leader
+        if not self.state.successor_addr:
+            log.info("No successor defined, starting an election to become leader.")
+            self.election_manager.start_election()
+
+    def stop(self):
+        """Stops all components gracefully."""
+        log.info(f"Stopping Node {self.config.node_id}...")
+        self.running = False
+        for component in reversed(self.components): # Stop in reverse order
+            if hasattr(component, 'stop'):
+                component.stop()
+        
+        # Wait for threads to finish
+        for component in reversed(self.components):
+            if component.is_alive():
+                component.join(timeout=2)
+                
+        self.wal.close()
+        log.info("Node stopped.")
+    
+    # --- Callback Wiring ---
+
+    def handle_tcp_message(self, data: bytes):
+        """
+        Main dispatcher for all incoming TCP messages from the predecessor.
+        This is the central point for wiring callbacks.
+        """
+        try:
+            msg = parse_message(data)
+            msg_type = msg.get("type")
+
+            if msg_type == MSG_REPLICATION:
+                self.replication_manager.handle_replication_message(msg)
+            elif msg_type == MSG_ELECTION:
+                self.election_manager.handle_election_message(msg)
+            elif msg_type == MSG_HEARTBEAT:
+                # In a more robust system, you'd update a 'last_seen' timestamp
+                # for the predecessor and use it to detect failures.
+                log.debug(f"Received heartbeat from predecessor: {msg.get('payload')}")
+            else:
+                log.warning(f"Received unknown message type: {msg_type}")
+        except Exception as e:
+            log.error(f"Error handling TCP message: {e}")
+
+    def handle_http_update(self, update_payload: dict) -> bool:
+        """
+        Callback for the HTTP server when a valid update is received.
+        This function orchestrates the leader's responsibilities:
+        1. Log to WAL.
+        2. Update in-memory state.
+        3. Replicate to followers.
+        """
+        if not self.state.is_leader():
+            log.warning("Non-leader received an update request. This should not happen.")
+            return False
+            
+        try:
+            # Reconstruct the log record to be stored
+            item_id = update_payload.get("item_id")
+            quantity = update_payload.get("quantity")
+            if item_id is None or quantity is None:
+                return False
+
+            wal_record = {"op": "UPDATE", "item_id": item_id, "quantity": quantity}
+            
+            # 1. Log to WAL for durability
+            self.wal.append(wal_record)
+            
+            # 2. Apply to in-memory state
+            self.state.update_inventory(item_id, quantity)
+            
+            # 3. Trigger replication to followers
+            self.replication_manager.replicate_update(update_payload)
+            
+            return True
+        except Exception as e:
+            log.error(f"Error processing HTTP update: {e}")
+            return False
+
+def main():
+    """
+    Main function to run a DIMS node.
+    """
+    # Load configuration from args and environment
+    config.load_from_args()
+    
+    node = Node(config)
+    
+    def signal_handler(sig, frame):
+        print("\nCaught signal, shutting down gracefully...")
+        node.stop()
+    
+    signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
+    
+    node.start()
+    
+    # Keep the main thread alive while services run in the background
+    while node.running:
+        try:
+            time.sleep(1)
+        except InterruptedException:
+            node.stop()
+            break
+
+if __name__ == '__main__':
+    main()
