@@ -12,6 +12,7 @@ This includes:
 import socket
 import threading
 import time
+import struct
 from typing import Optional, Callable
 
 # Add project root to path to allow absolute imports
@@ -54,10 +55,20 @@ class TCPRingServer(threading.Thread):
                     
                     with self._predecessor_conn:
                         while self.running:
-                            data = self._predecessor_conn.recv(4096)
-                            if not data:
+                            # Read 4-byte length prefix
+                            header = self._recv_exactly(4)
+                            if not header:
                                 print("Predecessor connection closed.")
                                 break
+                            
+                            msg_len = struct.unpack('>I', header)[0]
+                            
+                            # Read the payload based on the length
+                            data = self._recv_exactly(msg_len)
+                            if not data:
+                                print("Predecessor connection closed during message body.")
+                                break
+                                
                             self.message_handler(data)
                 except Exception as e:
                     if self.running:
@@ -77,16 +88,27 @@ class TCPRingServer(threading.Thread):
             pass
         print("TCP Ring Server stopped.")
 
+    def _recv_exactly(self, n: int) -> Optional[bytes]:
+        """Helper to receive exactly n bytes from the predecessor connection."""
+        data = b''
+        while len(data) < n:
+            packet = self._predecessor_conn.recv(n - len(data))
+            if not packet:
+                return None
+            data += packet
+        return data
+
 
 class TCPRingClient(threading.Thread):
     """
     Manages the outgoing TCP connection to the successor node.
     Sends heartbeats and other messages. Handles connection failures.
     """
-    def __init__(self, node_state: NodeState, config: AppConfig):
+    def __init__(self, node_state: NodeState, config: AppConfig, on_failure: Optional[Callable[[], None]] = None):
         super().__init__(daemon=True)
         self.node_state = node_state
         self.config = config
+        self.on_failure = on_failure
         self.running = False
         self._successor_conn: Optional[socket.socket] = None
 
@@ -103,8 +125,9 @@ class TCPRingClient(threading.Thread):
                     print(f"Successfully connected to successor at {successor_addr}")
                 except Exception as e:
                     print(f"Failed to connect to successor {successor_addr}: {e}")
-                    # TODO: Trigger ring repair/election logic here
                     self.node_state.set_successor(None) # Clear bad successor
+                    if self.on_failure:
+                        self.on_failure()
                     time.sleep(self.config.heartbeat_interval) # Wait before retrying
                     continue
 
@@ -115,14 +138,18 @@ class TCPRingClient(threading.Thread):
                 except Exception as e:
                     print(f"Failed to send heartbeat to successor: {e}")
                     self._close_connection()
-                    # TODO: Trigger ring repair/election
+                    if self.on_failure:
+                        self.on_failure()
             
             time.sleep(self.config.heartbeat_interval)
 
     def send_message(self, msg: bytes):
         if not self._is_connected():
             raise ConnectionError("Not connected to a successor.")
-        self._successor_conn.sendall(msg)
+        
+        # Prefix the message with its 4-byte length (big-endian)
+        length_prefix = struct.pack('>I', len(msg))
+        self._successor_conn.sendall(length_prefix + msg)
 
     def _is_connected(self) -> bool:
         return self._successor_conn is not None

@@ -45,11 +45,7 @@ class DiscoveryListener(threading.Thread):
                 
                 if msg.get("type") == MSG_DISCOVERY_REQUEST and self.node_state.is_leader():
                     print(f"Received discovery request from {addr}, I am the leader.")
-                    # If listening on 0.0.0.0, respond with a loopback address for local clients.
-                    # A more advanced implementation could resolve the actual interface IP.
-                    response_host = self.config.http_host
-                    if response_host == '0.0.0.0':
-                        response_host = '127.0.0.1'
+                    response_host = self.config.resolve_advertised_host(addr[0])
                     
                     response_payload = {
                         "leader_id": self.node_state.leader_id,
@@ -115,6 +111,10 @@ if __name__ == '__main__':
     # 1. Mock a Leader Node
     leader_config = AppConfig()
     leader_config.node_id = 10
+    # Fix: Bind to a specific IP for the test so the assertion below holds true.
+    # If left as 0.0.0.0, the discovery response would contain a resolved IP (e.g. 192.168.x.x),
+    # which would not match '0.0.0.0' in the assertion.
+    leader_config.http_host = '127.0.0.1'
     
     leader_state = NodeState(node_id=leader_config.node_id)
     leader_state.set_role("LEADER")
@@ -133,6 +133,7 @@ if __name__ == '__main__':
     assert discovered_info is not None
     discovered_id, discovered_addr = discovered_info
     assert discovered_id == leader_config.node_id
+    # print(f"{leader_config.http_host}:{leader_config.http_port}")
     assert discovered_addr == f"{leader_config.http_host}:{leader_config.http_port}"
     
     print("\nSuccessfully discovered the leader.")

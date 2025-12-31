@@ -7,6 +7,7 @@ Configurations can be loaded from environment variables, a config file, or comma
 
 import os
 import argparse
+import socket
 
 class AppConfig:
     """
@@ -18,11 +19,15 @@ class AppConfig:
         self.node_id: int = int(os.getenv('DIMS_NODE_ID', 1))
 
         # HTTP server settings (for client communication)
+        # Defaulting to '0.0.0.0' allows the node to be reachable from other machines.
+        # It also triggers dynamic IP resolution in the discovery module.
         self.http_host: str = os.getenv('DIMS_HTTP_HOST', '0.0.0.0')
         self.http_port: int = int(os.getenv('DIMS_HTTP_PORT', 8000))
 
         # Internal TCP ring settings (for node-to-node communication)
-        self.tcp_host: str = os.getenv('DIMS_TCP_HOST', '0.0.0.0')
+        # We use the same host logic for internal communication to ensure 
+        # nodes on different machines can form a ring.
+        self.tcp_host: str = os.getenv('DIMS_TCP_HOST', self.http_host)
         self.tcp_port: int = int(os.getenv('DIMS_TCP_PORT', 9000))
         
         # Successor's address for the initial ring connection.
@@ -48,6 +53,7 @@ class AppConfig:
         """
         parser = argparse.ArgumentParser(description="DIMS Distributed Inventory Management System Node")
         parser.add_argument("--node-id", type=int, help=f"Unique ID for this node (default: {self.node_id})")
+        parser.add_argument("--host", type=str, help=f"Host to bind servers to (default: {self.http_host})")
         parser.add_argument("--http-port", type=int, help=f"HTTP port for client API (default: {self.http_port})")
         parser.add_argument("--tcp-port", type=int, help=f"Internal TCP port for ring communication (default: {self.tcp_port})")
         parser.add_argument("--successor", type=str, help="Address (host:port) of the successor node to connect to.")
@@ -61,6 +67,10 @@ class AppConfig:
             if args.wal_path is None:
                 self.wal_path = f'./data/wal_{self.node_id}.log'
 
+        if args.host:
+            self.http_host = args.host
+            self.tcp_host = args.host
+            
         if args.http_port:
             self.http_port = args.http_port
         if args.tcp_port:
@@ -72,6 +82,23 @@ class AppConfig:
             
         print(f"Configuration loaded for Node {self.node_id}")
 
+    def resolve_advertised_host(self, target_ip: str = '8.8.8.8') -> str:
+        """
+        Resolves the IP address to advertise to other nodes or clients.
+        - If http_host is set to a specific IP, returns that.
+        - If http_host is 0.0.0.0 (wildcard), determines the local interface IP
+          used to route packets to the 'target_ip'.
+        """
+        if self.http_host != '0.0.0.0':
+            return self.http_host
+            
+        try:
+            # Create a dummy UDP socket to determine the routing interface
+            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+                s.connect((target_ip, 1))
+                return s.getsockname()[0]
+        except Exception:
+            return '127.0.0.1'
 
 # Global config instance
 config = AppConfig()

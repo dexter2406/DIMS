@@ -53,6 +53,9 @@ class Node:
         self.replication_manager = ReplicationManager(self.state, self.ring_client, self.wal)
         self.election_manager = ElectionManager(self.state, self.ring_client)
         
+        # Wire the failure callback to trigger an election if the successor connection drops
+        self.ring_client.on_failure = self.election_manager.start_election
+        
         # The TCP server receives messages and dispatches them via handle_tcp_message
         self.ring_server = TCPRingServer(config, self.handle_tcp_message)
         
