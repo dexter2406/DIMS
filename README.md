@@ -95,3 +95,19 @@ The client will print the updates it sends and will automatically handle leader 
 - **Replication**: The leader writes updates to a Write-Ahead Log (WAL), applies them to its state, and propagates them around the ring. Followers receive the updates and apply them to their own state.
 - **Leader Election**: If a node detects a failure (e.g., its successor is unreachable), a ring-based election is triggered. The node with the highest ID wins and becomes the new leader.
 - **Crash Recovery**: When a node restarts, it replays its WAL to recover its state before rejoining the ring as a follower.
+
+## Progress & Milestones
+
+### Immediate Next Step (1-2 Days)
+- **Fault Tolerance Verification**: Manually simulate a node crash (e.g., by killing a follower process) and verify that the `TCPRingClient` correctly detects the failure and triggers the `ElectionManager` to initiate a ring repair.
+
+### Weekly Milestones (Roadmap to Completion)
+
+1.  **Milestone 1: Robust Networking & Discovery (Current)**
+    - Implementation of TCP message framing, dynamic IP resolution for discovery, and basic fault detection wiring.
+2.  **Milestone 2: Reliable Replication & State Consistency**
+    - Implementation: Hardening the `ReplicationManager` to handle edge cases in message forwarding and ensuring followers correctly persist replicated updates to their local WAL.
+3.  **Milestone 3: Resilient Ring Management & Election Stability**
+    - Implementation: Finalizing the ring-based election logic to handle complex scenarios like concurrent elections or multiple node failures, ensuring the ring always closes correctly.
+4.  **Milestone 4: Comprehensive Scenario-based Testing**
+    - Testing: Validating the entire system against specific failure scenarios, including Leader crashes, rapid node churn, network latency, and full cluster recovery from WAL.
