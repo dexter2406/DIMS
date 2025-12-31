@@ -33,7 +33,6 @@ class NodeState:
 
         # --- Network state for the ring ---
         self.successor_addr: Optional[Tuple[str, int]] = None
-        self.last_heartbeat: float = 0.0
 
     def set_role(self, role: str):
         """Sets the role of the node (LEADER or FOLLOWER)."""

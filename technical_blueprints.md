@@ -158,23 +158,23 @@ Scanner POST update → `http_server.py`（leader）→ `wal.py` append → `sta
 │   └── http_server.py     # 对外 HTTP REST 接口（Scanner → System）
 │                          # - Leader: 接收更新、写 WAL、触发复制
 │                          # - Follower: 拒绝 / redirect / 503
-│   # Owner: Fang
+│   # Owner: Mohamed
 │
 ├── storage/
 │   ├── wal.py             # Write-Ahead Log（append-only JSON）
 │   └── recovery.py        # 启动时 WAL replay，节点恢复并 rejoin
-│   # Owner: Fang
+│   # Owner: Mohamed
 │
 ├── core/
 │   ├── state.py           # 内存库存状态 + 节点运行时状态
 │   ├── replication.py    # 被动复制（Leader → Followers via ring）
 │   └── election.py       # Ring-based election（最高 Node ID）
-│   # Owner: Fang
+│   # Owner: Fang (election, replicatoin), Mohamed (state)
 │
 ├── network/
 │   ├── ring.py            # TCP ring 管理（successor、heartbeat、repair）
 │   └── udp_discovery.py   # UDP broadcast：发现 Leader HTTP endpoint
-│   # Owner: Fang
+│   # Owner: Fang (ring), Davud (udp_discovery)
 │
 ├── client/
 │   └── scanner_client.py  # 模拟 Scanner 客户端（UDP discover + HTTP POST）
