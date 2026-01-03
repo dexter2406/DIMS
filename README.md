@@ -14,6 +14,7 @@ The project is organized into the following modules:
 - `server/`: Main application entry point, configuration, and logger.
 - `storage/`: Write-Ahead Log (WAL) and recovery logic.
 
+- hi
 ## Installation
 
 To set up the development environment, follow these steps:
