@@ -7,6 +7,7 @@ the distributed inventory system. It uses Python's built-in http.server.
 
 import json
 import threading
+import logging
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from typing import Callable
 
@@ -17,6 +18,8 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 
 from core.state import NodeState
 from server.config import AppConfig
+
+logger = logging.getLogger(__name__)
 
 # A callback for handling a valid POST request
 UpdateHandler = Callable[[dict], bool]
@@ -74,7 +77,7 @@ class APRequestHandler(BaseHTTPRequestHandler):
                 post_data = self.rfile.read(content_length)
                 update_payload = json.loads(post_data)
                 
-                print(f"Leader received HTTP update: {update_payload}")
+                logger.info("Leader received HTTP update: %s", update_payload)
                 
                 # Pass the update to the handler function (defined in main.py)
                 # This handler will be responsible for WAL, state update, and replication
@@ -88,7 +91,7 @@ class APRequestHandler(BaseHTTPRequestHandler):
             except json.JSONDecodeError:
                 self._send_response(400, {"error": "Bad Request: Invalid JSON"})
             except Exception as e:
-                print(f"Error handling POST request: {e}")
+                logger.error("Error handling POST request: %s", e)
                 self._send_response(500, {"error": "Internal Server Error"})
         else:
             self._send_response(404, {"error": "Not Found"})
@@ -109,17 +112,17 @@ class APIServer(threading.Thread):
                 super().__init__(*args, **kwargs)
 
         self.httpd = CustomHTTPServer(self.server_address, APRequestHandler)
-        print(f"HTTP API server will run on {self.server_address[0]}:{self.server_address[1]}")
+        logger.info("HTTP API server will run on %s:%s", self.server_address[0], self.server_address[1])
 
     def run(self):
-        print("Starting HTTP API server...")
+        logger.info("Starting HTTP API server...")
         self.httpd.serve_forever()
 
     def stop(self):
-        print("Stopping HTTP API server...")
+        logger.info("Stopping HTTP API server...")
         self.httpd.shutdown()
         self.httpd.server_close()
-        print("HTTP API server stopped.")
+        logger.info("HTTP API server stopped.")
 
 # Example Usage
 if __name__ == '__main__':
@@ -133,7 +136,7 @@ if __name__ == '__main__':
     leader_state.set_role(ROLE_LEADER)
 
     def simple_update_handler(payload):
-        print(f"[Handler] Processing payload: {payload}")
+        logger.info("[Handler] Processing payload: %s", payload)
         return "item_id" in payload and "quantity" in payload
 
     http_server = APIServer(sim_config, leader_state, simple_update_handler)
@@ -147,11 +150,13 @@ if __name__ == '__main__':
     # We just demonstrate the logic. The handler for a follower is irrelevant
     # as it's never called.
     
-    print("\n--- Testing API Server ---")
-    print("Use a tool like curl to test:")
-    print("  curl http://localhost:8888/status")
-    print("  curl -X POST -H \"Content-Type: application/json\" -d '{\"item_id\":\"item-ABC\",\"quantity\":10}' http://localhost:8888/update")
-    print("\nTo test follower behavior, you would need to run a separate server instance with a follower state.")
+    logger.info("--- Testing API Server ---")
+    logger.info("Use a tool like curl to test:")
+    logger.info("  curl http://localhost:8888/status")
+    logger.info(
+        "  curl -X POST -H \"Content-Type: application/json\" -d '{\"item_id\":\"item-ABC\",\"quantity\":10}' http://localhost:8888/update"
+    )
+    logger.info("To test follower behavior, you would need to run a separate server instance with a follower state.")
     
     try:
         # Keep the main thread alive to let the server run
@@ -161,4 +166,4 @@ if __name__ == '__main__':
         http_server.stop()
         http_server.join()
     
-    print("HTTP Server example finished.")
+    logger.info("HTTP Server example finished.")

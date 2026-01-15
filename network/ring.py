@@ -13,6 +13,7 @@ import socket
 import threading
 import time
 import struct
+import logging
 from typing import Optional, Callable
 
 # Add project root to path to allow absolute imports
@@ -23,6 +24,9 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 from core.state import NodeState
 from server.config import AppConfig
 from common.protocol import create_message, MSG_HEARTBEAT
+from network.udp_discovery import discover_nodes
+
+logger = logging.getLogger(__name__)
 
 # A callback type for handling received messages
 MessageHandler = Callable[[bytes], None]
@@ -44,13 +48,13 @@ class TCPRingServer(threading.Thread):
             s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             s.bind((self.config.tcp_host, self.config.tcp_port))
             s.listen()
-            print(f"TCP Ring Server listening on {self.config.tcp_host}:{self.config.tcp_port}")
+            logger.info("TCP Ring Server listening on %s:%s", self.config.tcp_host, self.config.tcp_port)
             self.running = True
             
             while self.running:
                 try:
                     conn, addr = s.accept()
-                    print(f"Accepted connection from predecessor at {addr}")
+                    logger.info("Accepted connection from predecessor at %s", addr)
                     self._predecessor_conn = conn
                     
                     with self._predecessor_conn:
@@ -58,7 +62,7 @@ class TCPRingServer(threading.Thread):
                             # Read 4-byte length prefix
                             header = self._recv_exactly(4)
                             if not header:
-                                print("Predecessor connection closed.")
+                                logger.info("Predecessor connection closed.")
                                 break
                             
                             msg_len = struct.unpack('>I', header)[0]
@@ -66,16 +70,16 @@ class TCPRingServer(threading.Thread):
                             # Read the payload based on the length
                             data = self._recv_exactly(msg_len)
                             if not data:
-                                print("Predecessor connection closed during message body.")
+                                logger.info("Predecessor connection closed during message body.")
                                 break
                                 
                             self.message_handler(data)
                 except Exception as e:
                     if self.running:
-                        print(f"Error in TCPRingServer: {e}")
+                        logger.error("Error in TCPRingServer: %s", e)
                 finally:
                     self._predecessor_conn = None
-                    print("Waiting for new predecessor connection...")
+                    logger.info("Waiting for new predecessor connection...")
 
     def stop(self):
         self.running = False
@@ -86,7 +90,7 @@ class TCPRingServer(threading.Thread):
                 pass
         except:
             pass
-        print("TCP Ring Server stopped.")
+        logger.info("TCP Ring Server stopped.")
 
     def _recv_exactly(self, n: int) -> Optional[bytes]:
         """Helper to receive exactly n bytes from the predecessor connection."""
@@ -118,17 +122,17 @@ class TCPRingClient(threading.Thread):
             successor_addr = self.node_state.successor_addr
             if successor_addr and not self._is_connected():
                 try:
-                    print(f"Attempting to connect to successor at {successor_addr}...")
+                    logger.info("Attempting to connect to successor at %s...", successor_addr)
                     self._successor_conn = socket.create_connection(
                         successor_addr, timeout=self.config.connection_timeout
                     )
-                    print(f"Successfully connected to successor at {successor_addr}")
+                    logger.info("Successfully connected to successor at %s", successor_addr)
                 except Exception as e:
-                    print(f"Failed to connect to successor {successor_addr}: {e}")
-                    self.node_state.set_successor(None) # Clear bad successor
+                    logger.warning("Failed to connect to successor %s: %s", successor_addr, e)
+                    self._repair_ring()
                     if self.on_failure:
                         self.on_failure()
-                    time.sleep(self.config.heartbeat_interval) # Wait before retrying
+                    time.sleep(self.config.heartbeat_interval)
                     continue
 
             # If connected, send periodic heartbeats
@@ -136,12 +140,48 @@ class TCPRingClient(threading.Thread):
                 try:
                     self.send_message(create_message(MSG_HEARTBEAT, {"node_id": self.node_state.node_id}))
                 except Exception as e:
-                    print(f"Failed to send heartbeat to successor: {e}")
+                    logger.warning("Failed to send heartbeat to successor: %s", e)
                     self._close_connection()
                     if self.on_failure:
                         self.on_failure()
             
             time.sleep(self.config.heartbeat_interval)
+
+    def _repair_ring(self):
+        """
+        Attempts to find a new successor using UDP discovery to repair the ring.
+        Follows the logic: successor is the node with the smallest ID > self.node_id,
+        or the node with the minimum ID if self is the maximum.
+        """
+        logger.info("Initiating ring repair for Node %s...", self.node_state.node_id)
+        active_nodes = discover_nodes(self.config)
+        
+        # Filter out self
+        others = [n for n in active_nodes if n['node_id'] != self.node_state.node_id]
+        
+        if not others:
+            logger.info("No other nodes found. Node %s is isolated.", self.node_state.node_id)
+            self.node_state.set_successor(None)
+            return
+
+        # Sort by ID
+        others.sort(key=lambda x: x['node_id'])
+        
+        # Find the smallest ID > self.node_id
+        new_successor = None
+        for node in others:
+            if node['node_id'] > self.node_state.node_id:
+                new_successor = node
+                break
+        
+        # If not found, wrap around to the smallest ID
+        if not new_successor:
+            new_successor = others[0]
+            
+        host, port_str = new_successor['tcp_addr'].split(':')
+        logger.info("Ring repair: Node %s selected new successor Node %s at %s:%s", 
+                    self.node_state.node_id, new_successor['node_id'], host, port_str)
+        self.node_state.set_successor((host, int(port_str)))
 
     def send_message(self, msg: bytes):
         if not self._is_connected():
@@ -158,12 +198,12 @@ class TCPRingClient(threading.Thread):
         if self._successor_conn:
             self._successor_conn.close()
             self._successor_conn = None
-        print("Successor connection closed.")
+        logger.info("Successor connection closed.")
 
     def stop(self):
         self.running = False
         self._close_connection()
-        print("TCP Ring Client stopped.")
+        logger.info("TCP Ring Client stopped.")
 
 # Example Usage
 if __name__ == '__main__':
@@ -177,7 +217,7 @@ if __name__ == '__main__':
     succ_config.tcp_port = 9001
     
     def handle_msg(data):
-        print(f"Successor received: {data.decode()}")
+        logger.info("Successor received: %s", data.decode())
 
     server = TCPRingServer(succ_config, handle_msg)
     server.start()
@@ -193,7 +233,7 @@ if __name__ == '__main__':
     client.start()
 
     # Let the client connect and send a heartbeat
-    print("Waiting for client to send a heartbeat...")
+    logger.info("Waiting for client to send a heartbeat...")
     time.sleep(pred_config.heartbeat_interval + 1)
 
     # --- Cleanup ---
@@ -202,4 +242,4 @@ if __name__ == '__main__':
     client.join()
     server.join()
     
-    print("\nRing networking components basic test finished.")
+    logger.info("Ring networking components basic test finished.")

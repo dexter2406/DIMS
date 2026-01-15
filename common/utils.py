@@ -6,7 +6,10 @@ Provides common utility functions and helper classes used across the system.
 
 import time
 import json
+import logging
 from functools import wraps
+
+logger = logging.getLogger(__name__)
 
 def get_timestamp_ms() -> int:
     """Returns the current time in milliseconds."""
@@ -38,7 +41,7 @@ def retry(times: int, delay: float, exceptions: tuple = (Exception,)):
                     return func(*args, **kwargs)
                 except exceptions as e:
                     attempt += 1
-                    print(f"Attempt {attempt} failed: {e}. Retrying in {delay}s...")
+                    logger.warning("Attempt %s failed: %s. Retrying in %ss...", attempt, e, delay)
                     time.sleep(delay)
             # Final attempt
             return func(*args, **kwargs)
@@ -55,12 +58,12 @@ if __name__ == "__main__":
             raise ValueError("Simulated failure")
         return "Success!"
 
-    print("Running a function that might fail with a retry mechanism...")
+    logger.info("Running a function that might fail with a retry mechanism...")
     try:
         result = might_fail(fail_chance=0.8) 
-        print(f"Function completed with result: {result}")
+        logger.info("Function completed with result: %s", result)
     except ValueError as e:
-        print(f"Function failed after all retries: {e}")
+        logger.error("Function failed after all retries: %s", e)
 
-    print("\nUtility functions are ready.")
-    print(f"Current timestamp (ms): {get_timestamp_ms()}")
+    logger.info("Utility functions are ready.")
+    logger.info("Current timestamp (ms): %s", get_timestamp_ms())

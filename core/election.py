@@ -9,11 +9,14 @@ An election is triggered by events like startup or connection failure.
 # Add project root to path to allow absolute imports
 import sys
 import os
+import logging
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from core.state import NodeState, ROLE_LEADER, ROLE_FOLLOWER
 from network.ring import TCPRingClient
 from common.protocol import create_message, MSG_ELECTION
+
+logger = logging.getLogger(__name__)
 
 class ElectionManager:
     """
@@ -30,15 +33,15 @@ class ElectionManager:
         own ID to its successor.
         """
         if not self.ring_client._is_connected():
-            print("Cannot start election: Not connected to a successor.")
+            logger.warning("Cannot start election: Not connected to a successor.")
             # If a node is isolated, it can declare itself leader.
-            print("Declaring self as leader due to isolation.")
+            logger.info("Declaring self as leader due to isolation.")
             self.node_state.set_role(ROLE_LEADER)
             self.node_state.leader_id = self.node_state.node_id
             self.is_participating = False
             return
 
-        print(f"Node {self.node_state.node_id} is starting an election.")
+        logger.info("Node %s is starting an election.", self.node_state.node_id)
         self.is_participating = True
         election_payload = {"candidate_id": self.node_state.node_id}
         election_msg = create_message(MSG_ELECTION, payload=election_payload)
@@ -46,7 +49,7 @@ class ElectionManager:
         try:
             self.ring_client.send_message(election_msg)
         except Exception as e:
-            print(f"Failed to send initial election message: {e}")
+            logger.error("Failed to send initial election message: %s", e)
             self.is_participating = False
             # Maybe trigger again after a delay
     
@@ -61,15 +64,19 @@ class ElectionManager:
         candidate_id = payload.get("candidate_id")
 
         if candidate_id is None:
-            print("Received invalid election message.")
+            logger.warning("Received invalid election message.")
             return
 
-        print(f"Node {self.node_state.node_id} received election message with candidate {candidate_id}.")
+        logger.info(
+            "Node %s received election message with candidate %s.",
+            self.node_state.node_id,
+            candidate_id,
+        )
 
         # Case 1: The incoming candidate ID is this node's own ID.
         # This means the message has circulated the entire ring and this node is the winner.
         if candidate_id == self.node_state.node_id:
-            print(f"Node {self.node_state.node_id} has won the election!")
+            logger.info("Node %s has won the election!", self.node_state.node_id)
             self.node_state.set_role(ROLE_LEADER)
             self.node_state.leader_id = self.node_state.node_id
             self.is_participating = False
@@ -79,7 +86,7 @@ class ElectionManager:
         # Case 2: The incoming candidate ID is greater than this node's ID.
         # Forward the message unchanged.
         if candidate_id > self.node_state.node_id:
-            print(f"Forwarding election message for higher candidate {candidate_id}.")
+            logger.info("Forwarding election message for higher candidate %s.", candidate_id)
             self.is_participating = True # This node is now part of the ongoing election
             updated_msg = create_message(MSG_ELECTION, payload={"candidate_id": candidate_id})
         
@@ -87,7 +94,11 @@ class ElectionManager:
         # And this node is not already participating in an election with its own ID.
         # Substitute this node's ID and forward.
         elif candidate_id < self.node_state.node_id and not self.is_participating:
-            print(f"Replacing candidate {candidate_id} with own ID {self.node_state.node_id}.")
+            logger.info(
+                "Replacing candidate %s with own ID %s.",
+                candidate_id,
+                self.node_state.node_id,
+            )
             self.is_participating = True
             updated_msg = create_message(MSG_ELECTION, payload={"candidate_id": self.node_state.node_id})
         
@@ -95,13 +106,16 @@ class ElectionManager:
             # This can happen if candidate_id < self.node_state.node_id but this node
             # is already participating (i.e., has already sent its own ID).
             # In this case, the message from the lower-ID node is discarded.
-            print(f"Discarding election message from lower candidate {candidate_id} as I am already participating.")
+            logger.info(
+                "Discarding election message from lower candidate %s as I am already participating.",
+                candidate_id,
+            )
             return
 
         try:
             self.ring_client.send_message(updated_msg)
         except Exception as e:
-            print(f"Failed to forward election message: {e}")
+            logger.error("Failed to forward election message: %s", e)
             # The successor link is probably broken. A new election will likely
             # be triggered by the connection failure logic.
             self.is_participating = False
@@ -110,8 +124,8 @@ class ElectionManager:
 if __name__ == '__main__':
     # Election logic is highly dependent on the ring state and is best tested
     # through integration.
-    print("ElectionManager logic is defined.")
-    print("Correctness depends on a functioning TCP ring and message passing.")
+    logger.info("ElectionManager logic is defined.")
+    logger.info("Correctness depends on a functioning TCP ring and message passing.")
     
     # A conceptual test flow:
     # - Node A, B, C with IDs 10, 20, 30.
@@ -124,4 +138,4 @@ if __name__ == '__main__':
     # - B receives ELECTION(30). Since 30 > 20, B forwards ELECTION(30) to C.
     # - C receives ELECTION(30). It's its own ID. C declares itself leader.
     
-    print("\nConceptual test plan created.")
+    logger.info("Conceptual test plan created.")

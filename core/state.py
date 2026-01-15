@@ -7,7 +7,10 @@ the single source of truth for the node's current condition.
 """
 
 import threading
+import logging
 from typing import Dict, Any, Optional, Tuple
+
+logger = logging.getLogger(__name__)
 
 # Node roles
 ROLE_LEADER = "LEADER"
@@ -42,7 +45,7 @@ class NodeState:
             self.role = role
             if role == ROLE_LEADER:
                 self.leader_id = self.node_id
-            print(f"Node {self.node_id} is now {self.role}")
+            logger.info("Node %s is now %s", self.node_id, self.role)
 
     def is_leader(self) -> bool:
         """Checks if the current node is the leader."""
@@ -55,7 +58,7 @@ class NodeState:
         This is the core "business logic" operation.
         """
         with self._lock:
-            print(f"Updating inventory: item '{item_id}' to quantity {quantity}")
+            logger.info("Updating inventory: item '%s' to quantity %s", item_id, quantity)
             self.inventory[item_id] = quantity
             return True # In a real app, might have validation
 
@@ -68,7 +71,7 @@ class NodeState:
         """Sets the network address of the successor node."""
         with self._lock:
             self.successor_addr = addr
-            print(f"Node {self.node_id}'s successor is set to {addr}")
+            logger.info("Node %s's successor is set to %s", self.node_id, addr)
             
     def __repr__(self) -> str:
         """Provides a string representation of the node's state."""
@@ -82,12 +85,12 @@ class NodeState:
 if __name__ == "__main__":
     # Create a state object for a node with ID 5
     state = NodeState(node_id=5)
-    print(state)
+    logger.info(state)
 
     # Promote to leader
     state.set_role(ROLE_LEADER)
-    print(f"Is this node the leader? {state.is_leader()}")
-    print(state)
+    logger.info("Is this node the leader? %s", state.is_leader())
+    logger.info(state)
 
     # Perform some inventory updates
     state.update_inventory("item-A", 100)
@@ -95,12 +98,12 @@ if __name__ == "__main__":
     
     # Set a successor
     state.set_successor(('localhost', 9001))
-    print(state)
+    logger.info(state)
 
     # Get the current inventory
     current_inventory = state.get_inventory()
-    print(f"\nCurrent Inventory: {current_inventory}")
+    logger.info("Current Inventory: %s", current_inventory)
 
     assert state.is_leader()
     assert current_inventory["item-A"] == 100
-    print("\nNodeState basic operations are working correctly.")
+    logger.info("NodeState basic operations are working correctly.")

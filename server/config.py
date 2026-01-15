@@ -8,6 +8,9 @@ Configurations can be loaded from environment variables, a config file, or comma
 import os
 import argparse
 import socket
+import logging
+
+logger = logging.getLogger(__name__)
 
 class AppConfig:
     """
@@ -80,7 +83,7 @@ class AppConfig:
         if args.wal_path:
             self.wal_path = args.wal_path
             
-        print(f"Configuration loaded for Node {self.node_id}")
+        logger.info("Configuration loaded for Node %s", self.node_id)
 
     def resolve_advertised_host(self, target_ip: str = '8.8.8.8') -> str:
         """
@@ -107,12 +110,12 @@ if __name__ == '__main__':
     # This block demonstrates how to load and access the configuration.
     # In a real run, you'd call 'load_from_args' from your main entry point.
     
-    print("Default configuration:")
-    print(f"  Node ID: {config.node_id}")
-    print(f"  HTTP Endpoint: {config.http_host}:{config.http_port}")
-    print(f"  TCP Endpoint: {config.tcp_host}:{config.tcp_port}")
-    print(f"  Successor: {config.successor_addr}")
-    print(f"  WAL Path: {config.wal_path}")
+    logger.info("Default configuration:")
+    logger.info("  Node ID: %s", config.node_id)
+    logger.info("  HTTP Endpoint: %s:%s", config.http_host, config.http_port)
+    logger.info("  TCP Endpoint: %s:%s", config.tcp_host, config.tcp_port)
+    logger.info("  Successor: %s", config.successor_addr)
+    logger.info("  WAL Path: %s", config.wal_path)
     
     # To test argument parsing, you would run from the command line:
     # python -m server.config --node-id 10 --http-port 8080 --successor "localhost:9001"

@@ -9,12 +9,15 @@ Handles the replication of state changes from the leader to followers.
 # Add project root to path to allow absolute imports
 import sys
 import os
+import logging
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from core.state import NodeState
 from network.ring import TCPRingClient
 from common.protocol import create_message, parse_message, MSG_REPLICATION
 from storage.wal import WriteAheadLog
+
+logger = logging.getLogger(__name__)
 
 class ReplicationManager:
     """
@@ -44,17 +47,17 @@ class ReplicationManager:
         and updated its in-memory state.
         """
         if not self.node_state.is_leader():
-            print("Warning: A non-leader node attempted to replicate an update.")
+            logger.warning("A non-leader node attempted to replicate an update.")
             return
 
-        print(f"Leader replicating update: {update_data}")
+        logger.info("Leader replicating update: %s", update_data)
         replication_msg = create_message(MSG_REPLICATION, payload=update_data)
         
         try:
             self.ring_client.send_message(replication_msg)
-            print("Replication message sent to successor.")
+            logger.info("Replication message sent to successor.")
         except Exception as e:
-            print(f"Error sending replication message: {e}")
+            logger.error("Error sending replication message: %s", e)
 
     def handle_replication_message(self, msg: dict):
         """
@@ -69,10 +72,10 @@ class ReplicationManager:
 
         payload = msg.get("payload")
         if not payload:
-            print("Received replication message with no payload.")
+            logger.warning("Received replication message with no payload.")
             return
             
-        print(f"Follower received replication message: {payload}")
+        logger.info("Follower received replication message: %s", payload)
 
         # The core logic of applying the state change
         # This must match the operation performed on the leader
@@ -95,16 +98,16 @@ class ReplicationManager:
             # Note: A more optimized implementation would forward the raw bytes directly
             original_message_bytes = create_message(MSG_REPLICATION, payload)
             self.ring_client.send_message(original_message_bytes)
-            print("Follower forwarded replication message to its successor.")
+            logger.info("Follower forwarded replication message to its successor.")
         except Exception as e:
-            print(f"Follower failed to forward replication message: {e}")
+            logger.error("Follower failed to forward replication message: %s", e)
 
 # Example Usage
 if __name__ == '__main__':
     # This is difficult to test in isolation.
     # The integration with the TCP ring components is essential.
-    print("ReplicationManager logic is defined.")
-    print("Integration testing with the main application loop is required to verify correctness.")
+    logger.info("ReplicationManager logic is defined.")
+    logger.info("Integration testing with the main application loop is required to verify correctness.")
     
     # A conceptual test:
     # 1. Mock a Leader NodeState and a TCPRingClient.
@@ -115,4 +118,4 @@ if __name__ == '__main__':
     # 6. Call `handle_replication_message` and verify the state and WAL are updated,
     #    and that the follower's ring client also calls `send_message`.
     
-    print("\nConceptual test plan created.")
+    logger.info("Conceptual test plan created.")

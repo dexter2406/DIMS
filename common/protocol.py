@@ -7,7 +7,10 @@ All modules that send or receive messages should adhere to this protocol.
 """
 
 import json
+import logging
 from typing import Dict, Any, Literal
+
+logger = logging.getLogger(__name__)
 
 # Message types
 MSG_HEARTBEAT = "HEARTBEAT"
@@ -18,6 +21,8 @@ MSG_UPDATE_ACK = "UPDATE_ACK" # Optional, for more reliable replication
 # UDP Discovery messages
 MSG_DISCOVERY_REQUEST = "DISCOVERY_REQUEST"
 MSG_DISCOVERY_RESPONSE = "DISCOVERY_RESPONSE"
+MSG_NODE_QUERY = "NODE_QUERY"
+MSG_NODE_PRESENCE = "NODE_PRESENCE"
 
 
 def create_message(msg_type: str, payload: Dict[str, Any] = None) -> bytes:
@@ -55,19 +60,18 @@ if __name__ == "__main__":
     # Example: Creating a replication message
     update_payload = {"item_id": "item-123", "quantity": 10}
     replication_msg = create_message(MSG_REPLICATION, payload=update_payload)
-    print(f"Serialized replication message: {replication_msg}")
+    logger.info("Serialized replication message: %s", replication_msg)
 
     # Example: Parsing a message
     parsed_msg = parse_message(replication_msg)
-    print(f"Parsed message: {parsed_msg}")
+    logger.info("Parsed message: %s", parsed_msg)
     assert parsed_msg["type"] == MSG_REPLICATION
     assert parsed_msg["payload"]["item_id"] == "item-123"
 
     # Example: Election message
     election_msg = create_message(MSG_ELECTION, payload={"candidate_id": 99})
-    print(f"Serialized election message: {election_msg}")
+    logger.info("Serialized election message: %s", election_msg)
     parsed_election_msg = parse_message(election_msg)
-    print(f"Parsed election message: {parsed_election_msg}")
+    logger.info("Parsed election message: %s", parsed_election_msg)
 
-    print("Protocol definitions and helpers are ready.")
-
+    logger.info("Protocol definitions and helpers are ready.")

@@ -1,0 +1,55 @@
+2026-01-15 11:06:38,065 - server.config - [INFO] - (config:86) - Configuration loaded for Node 2
+2026-01-15 11:06:38,065 - __main__ - [INFO] - (main:191) - Configuration loaded for Node 2
+2026-01-15 11:06:38,066 - __main__ - [INFO] - (main:55) - Initializing Node 2...
+2026-01-15 11:06:38,066 - storage.wal - [INFO] - (wal:35) - WAL initialized at ./data/wal_2.log
+2026-01-15 11:06:38,067 - storage.recovery - [INFO] - (recovery:41) - Starting state recovery for Node 2...
+2026-01-15 11:06:38,068 - core.state - [INFO] - (state:61) - Updating inventory: item 'item-SKU-1000' to quantity 197
+2026-01-15 11:06:38,071 - core.state - [INFO] - (state:61) - Updating inventory: item 'item-SKU-1001' to quantity 65
+2026-01-15 11:06:38,071 - core.state - [INFO] - (state:61) - Updating inventory: item 'item-SKU-1002' to quantity 7
+2026-01-15 11:06:38,072 - core.state - [INFO] - (state:61) - Updating inventory: item 'item-SKU-1000' to quantity 103
+2026-01-15 11:06:38,072 - core.state - [INFO] - (state:61) - Updating inventory: item 'item-SKU-1001' to quantity 13
+2026-01-15 11:06:38,073 - core.state - [INFO] - (state:61) - Updating inventory: item 'item-SKU-1002' to quantity 59
+2026-01-15 11:06:38,073 - storage.recovery - [INFO] - (recovery:59) - Recovery complete. Total operations replayed: 6
+2026-01-15 11:06:38,074 - storage.recovery - [INFO] - (recovery:60) - Final recovered inventory: {'item-SKU-1000': 103, 'item-SKU-1001': 13, 'item-SKU-1002': 59}
+2026-01-15 11:06:38,074 - core.state - [INFO] - (state:48) - Node 2 is now FOLLOWER
+2026-01-15 11:06:38,074 - core.state - [INFO] - (state:74) - Node 2's successor is set to ('localhost', 9001)
+2026-01-15 11:06:38,092 - api.http_server - [INFO] - (http_server:115) - HTTP API server will run on 0.0.0.0:8002
+2026-01-15 11:06:38,092 - __main__ - [INFO] - (main:97) - Starting Node 2...
+2026-01-15 11:06:38,094 - network.ring - [INFO] - (ring:124) - Attempting to connect to successor at ('localhost', 9001)...
+2026-01-15 11:06:38,094 - network.ring - [INFO] - (ring:50) - TCP Ring Server listening on 0.0.0.0:9002
+2026-01-15 11:06:38,095 - api.http_server - [INFO] - (http_server:118) - Starting HTTP API server...
+2026-01-15 11:06:38,095 - network.udp_discovery - [INFO] - (udp_discovery:41) - UDP Discovery Listener started on port 10000
+2026-01-15 11:06:40,139 - network.ring - [INFO] - (ring:128) - Successfully connected to successor at ('localhost', 9001)
+2026-01-15 11:07:15,145 - network.ring - [WARNING] - (ring:142) - Failed to send heartbeat to successor: [WinError 10053] 你的主机中的软件中止了一个已建立的连接。
+2026-01-15 11:07:15,181 - network.ring - [INFO] - (ring:164) - Successor connection closed.
+2026-01-15 11:07:15,182 - core.election - [WARNING] - (election:36) - Cannot start election: Not connected to a successor.
+2026-01-15 11:07:15,182 - core.election - [INFO] - (election:38) - Declaring self as leader due to isolation.
+2026-01-15 11:07:15,183 - core.state - [INFO] - (state:48) - Node 2 is now LEADER
+2026-01-15 11:07:20,183 - network.ring - [INFO] - (ring:124) - Attempting to connect to successor at ('localhost', 9001)...
+2026-01-15 11:07:24,275 - network.ring - [WARNING] - (ring:130) - Failed to connect to successor ('localhost', 9001): [WinError 10061] 由于目标计算机积极拒绝，无法连接。
+2026-01-15 11:07:24,276 - core.state - [INFO] - (state:74) - Node 2's successor is set to None
+2026-01-15 11:07:24,277 - core.election - [WARNING] - (election:36) - Cannot start election: Not connected to a successor.
+2026-01-15 11:07:24,278 - core.election - [INFO] - (election:38) - Declaring self as leader due to isolation.
+2026-01-15 11:07:24,278 - core.state - [INFO] - (state:48) - Node 2 is now LEADER
+2026-01-15 11:07:42,163 - network.udp_discovery - [INFO] - (udp_discovery:50) - Received discovery request from ('192.168.178.87', 52197), I am the leader.
+2026-01-15 11:07:42,191 - api.http_server - [INFO] - (http_server:80) - Leader received HTTP update: {'item_id': 'item-SKU-1000', 'quantity': 43}
+2026-01-15 11:07:42,191 - core.state - [INFO] - (state:61) - Updating inventory: item 'item-SKU-1000' to quantity 43
+2026-01-15 11:07:42,191 - core.replication - [INFO] - (replication:53) - Leader replicating update: {'item_id': 'item-SKU-1000', 'quantity': 43}
+2026-01-15 11:07:42,191 - core.replication - [ERROR] - (replication:60) - Error sending replication message: Not connected to a successor.
+2026-01-15 11:07:47,197 - api.http_server - [INFO] - (http_server:80) - Leader received HTTP update: {'item_id': 'item-SKU-1001', 'quantity': 185}
+2026-01-15 11:07:47,198 - core.state - [INFO] - (state:61) - Updating inventory: item 'item-SKU-1001' to quantity 185
+2026-01-15 11:07:47,198 - core.replication - [INFO] - (replication:53) - Leader replicating update: {'item_id': 'item-SKU-1001', 'quantity': 185}
+2026-01-15 11:07:47,199 - core.replication - [ERROR] - (replication:60) - Error sending replication message: Not connected to a successor.
+2026-01-15 11:07:52,206 - api.http_server - [INFO] - (http_server:80) - Leader received HTTP update: {'item_id': 'item-SKU-1002', 'quantity': 52}
+2026-01-15 11:07:52,207 - core.state - [INFO] - (state:61) - Updating inventory: item 'item-SKU-1002' to quantity 52
+2026-01-15 11:07:52,207 - core.replication - [INFO] - (replication:53) - Leader replicating update: {'item_id': 'item-SKU-1002', 'quantity': 52}
+2026-01-15 11:07:52,208 - core.replication - [ERROR] - (replication:60) - Error sending replication message: Not connected to a successor.
+2026-01-15 11:08:03,652 - __main__ - [INFO] - (main:196) - Caught signal, shutting down gracefully...
+2026-01-15 11:08:03,653 - __main__ - [INFO] - (main:108) - Stopping Node 2...
+2026-01-15 11:08:03,653 - api.http_server - [INFO] - (http_server:122) - Stopping HTTP API server...
+2026-01-15 11:08:03,956 - api.http_server - [INFO] - (http_server:125) - HTTP API server stopped.
+2026-01-15 11:08:03,956 - network.udp_discovery - [INFO] - (udp_discovery:66) - UDP Discovery Listener stopped.
+2026-01-15 11:08:03,957 - network.ring - [INFO] - (ring:164) - Successor connection closed.
+2026-01-15 11:08:03,957 - network.ring - [INFO] - (ring:169) - TCP Ring Client stopped.
+2026-01-15 11:08:03,958 - network.ring - [INFO] - (ring:92) - TCP Ring Server stopped.
+2026-01-15 11:08:06,295 - __main__ - [INFO] - (main:120) - Node stopped.

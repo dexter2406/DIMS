@@ -10,7 +10,10 @@ state recovery after a crash.
 import json
 import os
 import threading
+import logging
 from typing import Dict, Any, Generator
+
+logger = logging.getLogger(__name__)
 
 class WriteAheadLog:
     """
@@ -29,7 +32,7 @@ class WriteAheadLog:
         # Open the file in append mode. The file handle is kept open to
         # reduce overhead on frequent writes.
         self.file = open(self.wal_path, 'a')
-        print(f"WAL initialized at {self.wal_path}")
+        logger.info("WAL initialized at %s", self.wal_path)
 
     def append(self, record: Dict[str, Any]):
         """
@@ -59,7 +62,7 @@ class WriteAheadLog:
                         yield json.loads(line)
         except FileNotFoundError:
             # It's okay if the file doesn't exist on first start
-            print(f"WAL file not found at {self.wal_path}. Starting fresh.")
+            logger.info("WAL file not found at %s. Starting fresh.", self.wal_path)
             return
 
     def close(self):
@@ -82,7 +85,7 @@ if __name__ == "__main__":
     wal = WriteAheadLog(wal_path=demo_wal_path)
 
     # Simulate some operations being logged
-    print("Appending records to the WAL...")
+    logger.info("Appending records to the WAL...")
     op1 = {"op": "UPDATE", "item_id": "item-X", "quantity": 50}
     op2 = {"op": "UPDATE", "item_id": "item-Y", "quantity": 120}
     wal.append(op1)
@@ -90,24 +93,24 @@ if __name__ == "__main__":
     
     # The 'wal' object is closed automatically on exit, but we can be explicit
     wal.close()
-    print("WAL closed.")
+    logger.info("WAL closed.")
 
     # --- Recovery Simulation ---
-    print("\nSimulating recovery by reading all records from the WAL:")
+    logger.info("Simulating recovery by reading all records from the WAL:")
     
     # In a real scenario, a new WAL object would be created on startup
     recovery_wal = WriteAheadLog(wal_path=demo_wal_path)
     
     recovered_ops = 0
     for record in recovery_wal.read_all():
-        print(f"  - Recovered record: {record}")
+        logger.info("  - Recovered record: %s", record)
         recovered_ops += 1
     
-    print(f"Total records recovered: {recovered_ops}")
+    logger.info("Total records recovered: %s", recovered_ops)
     assert recovered_ops == 2
 
     recovery_wal.close()
     
     # Clean up the demo file
     os.remove(demo_wal_path)
-    print("\nWAL functionality is working correctly.")
+    logger.info("WAL functionality is working correctly.")

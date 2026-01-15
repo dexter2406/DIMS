@@ -8,12 +8,12 @@ import signal
 import time
 import sys
 import os
+import logging
 
 # Ensure the project root is in the Python path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from server.config import config
-from server.logger import log
 from core.state import NodeState, ROLE_LEADER, ROLE_FOLLOWER
 from storage.wal import WriteAheadLog
 from storage.recovery import RecoveryManager
@@ -23,6 +23,25 @@ from core.replication import ReplicationManager
 from core.election import ElectionManager
 from api.http_server import APIServer
 from common.protocol import parse_message, MSG_REPLICATION, MSG_ELECTION, MSG_HEARTBEAT
+from common.logging_utils import configure_logging, build_log_path
+
+log = logging.getLogger(__name__)
+
+
+def _peek_node_id_from_args(default_id: int) -> int:
+    for index, arg in enumerate(sys.argv):
+        if arg.startswith("--node-id="):
+            value = arg.split("=", 1)[1]
+            try:
+                return int(value)
+            except ValueError:
+                return default_id
+        if arg == "--node-id" and index + 1 < len(sys.argv):
+            try:
+                return int(sys.argv[index + 1])
+            except ValueError:
+                return default_id
+    return default_id
 
 class Node:
     """
@@ -163,13 +182,18 @@ def main():
     """
     Main function to run a DIMS node.
     """
+    node_id_for_log = _peek_node_id_from_args(config.node_id)
+    log_file = build_log_path("server", node_id=node_id_for_log)
+    configure_logging(log_file, level=logging.INFO, to_console=True)
+
     # Load configuration from args and environment
     config.load_from_args()
+    log.info("Configuration loaded for Node %s", config.node_id)
     
     node = Node(config)
     
     def signal_handler(sig, frame):
-        print("\nCaught signal, shutting down gracefully...")
+        log.info("Caught signal, shutting down gracefully...")
         node.stop()
     
     signal.signal(signal.SIGINT, signal_handler)

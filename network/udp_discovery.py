@@ -10,6 +10,7 @@ This avoids hardcoding the leader's address in the clients.
 import socket
 import threading
 import time
+import logging
 from typing import Optional, Tuple
 
 # Add project root to path to allow absolute imports
@@ -17,8 +18,14 @@ import sys
 import os
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from common.protocol import create_message, parse_message, MSG_DISCOVERY_REQUEST, MSG_DISCOVERY_RESPONSE
+from common.protocol import (
+    create_message, parse_message, 
+    MSG_DISCOVERY_REQUEST, MSG_DISCOVERY_RESPONSE,
+    MSG_NODE_QUERY, MSG_NODE_PRESENCE
+)
 from core.state import NodeState
+
+logger = logging.getLogger(__name__)
 
 class DiscoveryListener(threading.Thread):
     """
@@ -35,32 +42,41 @@ class DiscoveryListener(threading.Thread):
 
     def run(self):
         self.sock.bind(('', self.config.udp_discovery_port))
-        print(f"UDP Discovery Listener started on port {self.config.udp_discovery_port}")
+        logger.info("UDP Discovery Listener started on port %s", self.config.udp_discovery_port)
         self.running = True
         
         while self.running:
             try:
                 data, addr = self.sock.recvfrom(1024)
                 msg = parse_message(data)
-                
-                if msg.get("type") == MSG_DISCOVERY_REQUEST and self.node_state.is_leader():
-                    print(f"Received discovery request from {addr}, I am the leader.")
-                    response_host = self.config.resolve_advertised_host(addr[0])
-                    
+                msg_type = msg.get("type")
+                response_host = self.config.resolve_advertised_host(addr[0])
+
+                if msg_type == MSG_DISCOVERY_REQUEST and self.node_state.is_leader():
+                    logger.info("Received leader discovery request from %s", addr)
                     response_payload = {
                         "leader_id": self.node_state.leader_id,
                         "http_addr": f"{response_host}:{self.config.http_port}"
                     }
                     response_msg = create_message(MSG_DISCOVERY_RESPONSE, response_payload)
                     self.sock.sendto(response_msg, addr)
+                
+                elif msg_type == MSG_NODE_QUERY:
+                    logger.debug("Received node query from %s", addr)
+                    response_payload = {
+                        "node_id": self.node_state.node_id,
+                        "tcp_addr": f"{response_host}:{self.config.tcp_port}"
+                    }
+                    response_msg = create_message(MSG_NODE_PRESENCE, response_payload)
+                    self.sock.sendto(response_msg, addr)
             except Exception as e:
                 if self.running:
-                    print(f"Error in DiscoveryListener: {e}")
+                    logger.error("Error in DiscoveryListener: %s", e)
 
     def stop(self):
         self.running = False
         self.sock.close()
-        print("UDP Discovery Listener stopped.")
+        logger.info("UDP Discovery Listener stopped.")
 
 def discover_leader(config) -> Optional[Tuple[int, str]]:
     """
@@ -69,7 +85,7 @@ def discover_leader(config) -> Optional[Tuple[int, str]]:
     Returns:
         A tuple containing (leader_id, http_address) or None if no leader is found.
     """
-    print("Broadcasting to discover the leader...")
+    logger.info("Broadcasting to discover the leader...")
     
     client_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     client_sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
@@ -90,16 +106,56 @@ def discover_leader(config) -> Optional[Tuple[int, str]]:
             leader_id = payload.get("leader_id")
             http_addr = payload.get("http_addr")
             if leader_id is not None and http_addr:
-                print(f"Discovered Leader {leader_id} at {http_addr}")
+                logger.info("Discovered Leader %s at %s", leader_id, http_addr)
                 return leader_id, http_addr
     except socket.timeout:
-        print("Leader discovery timed out. No response received.")
+        logger.warning("Leader discovery timed out. No response received.")
     except Exception as e:
-        print(f"An error occurred during leader discovery: {e}")
+        logger.error("An error occurred during leader discovery: %s", e)
     finally:
         client_sock.close()
         
     return None
+
+def discover_nodes(config, timeout: float = 2.0) -> list:
+    """
+    Broadcasts a query to find all active nodes in the network.
+    Used for ring repair and dynamic joining.
+    """
+    logger.info("Broadcasting to discover all active nodes...")
+    nodes = []
+    
+    client_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    client_sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+    client_sock.settimeout(timeout)
+
+    query_msg = create_message(MSG_NODE_QUERY)
+    
+    try:
+        client_sock.sendto(query_msg, (config.udp_broadcast_addr, config.udp_discovery_port))
+        
+        start_time = time.time()
+        while time.time() - start_time < timeout:
+            try:
+                data, _ = client_sock.recvfrom(1024)
+                response = parse_message(data)
+                if response.get("type") == MSG_NODE_PRESENCE:
+                    payload = response.get("payload", {})
+                    node_id = payload.get("node_id")
+                    tcp_addr = payload.get("tcp_addr")
+                    if node_id is not None and tcp_addr:
+                        # Avoid duplicates
+                        if not any(n['node_id'] == node_id for n in nodes):
+                            nodes.append({"node_id": node_id, "tcp_addr": tcp_addr})
+            except socket.timeout:
+                break
+    except Exception as e:
+        logger.error("Error during node discovery: %s", e)
+    finally:
+        client_sock.close()
+        
+    logger.info("Discovered %d active nodes.", len(nodes))
+    return nodes
 
 # Example Usage
 if __name__ == '__main__':
@@ -136,9 +192,9 @@ if __name__ == '__main__':
     # print(f"{leader_config.http_host}:{leader_config.http_port}")
     assert discovered_addr == f"{leader_config.http_host}:{leader_config.http_port}"
     
-    print("\nSuccessfully discovered the leader.")
+    logger.info("Successfully discovered the leader.")
     
     # 4. Clean up
     listener.stop()
     listener.join()
-    print("UDP Discovery example finished.")
+    logger.info("UDP Discovery example finished.")

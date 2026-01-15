@@ -10,10 +10,13 @@ After recovery, the node can rejoin the cluster as a follower.
 # Add project root to path to allow absolute imports
 import sys
 import os
+import logging
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from storage.wal import WriteAheadLog
 from core.state import NodeState
+
+logger = logging.getLogger(__name__)
 
 class RecoveryManager:
     """
@@ -35,7 +38,7 @@ class RecoveryManager:
         Reads the WAL and replays all logged operations to restore the
         node's in-memory state.
         """
-        print(f"Starting state recovery for Node {self.node_state.node_id}...")
+        logger.info("Starting state recovery for Node %s...", self.node_state.node_id)
         
         recovered_ops = 0
         for record in self.wal.read_all():
@@ -49,12 +52,12 @@ class RecoveryManager:
                         self.node_state.update_inventory(item_id, quantity)
                         recovered_ops += 1
                 else:
-                    print(f"Skipping unknown record type during recovery: {op_type}")
+                    logger.warning("Skipping unknown record type during recovery: %s", op_type)
             except Exception as e:
-                print(f"Error processing record {record}: {e}")
+                logger.error("Error processing record %s: %s", record, e)
 
-        print(f"Recovery complete. Total operations replayed: {recovered_ops}")
-        print(f"Final recovered inventory: {self.node_state.get_inventory()}")
+        logger.info("Recovery complete. Total operations replayed: %s", recovered_ops)
+        logger.info("Final recovered inventory: %s", self.node_state.get_inventory())
 
 # Example Usage
 if __name__ == '__main__':
@@ -76,7 +79,7 @@ if __name__ == '__main__':
 
     # 3. Simulate a node restart by creating a fresh state object
     fresh_node_state = NodeState(node_id=101)
-    print(f"State before recovery: {fresh_node_state.get_inventory()}")
+    logger.info("State before recovery: %s", fresh_node_state.get_inventory())
     
     # 4. Perform the recovery
     recovery_wal = WriteAheadLog(wal_path=demo_wal_path)
@@ -85,7 +88,7 @@ if __name__ == '__main__':
     
     # 5. Verify the state was restored
     final_inventory = fresh_node_state.get_inventory()
-    print(f"State after recovery: {final_inventory}")
+    logger.info("State after recovery: %s", final_inventory)
     
     assert final_inventory.get("item-R") == 105
     assert final_inventory.get("item-S") == 199
@@ -93,4 +96,4 @@ if __name__ == '__main__':
     # Clean up
     recovery_wal.close()
     os.remove(demo_wal_path)
-    print("\nRecoveryManager functionality is working correctly.")
+    logger.info("RecoveryManager functionality is working correctly.")
