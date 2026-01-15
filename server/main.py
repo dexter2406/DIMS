@@ -22,7 +22,7 @@ from network.ring import TCPRingServer, TCPRingClient
 from core.replication import ReplicationManager
 from core.election import ElectionManager
 from api.http_server import APIServer
-from common.protocol import parse_message, MSG_REPLICATION, MSG_ELECTION, MSG_HEARTBEAT
+from common.protocol import parse_message, MSG_REPLICATION, MSG_ELECTION, MSG_HEARTBEAT, MSG_COORDINATOR
 from common.logging_utils import configure_logging, build_log_path
 
 log = logging.getLogger(__name__)
@@ -98,10 +98,14 @@ class Node:
         for component in self.components:
             component.start()
             
-        # If no successor is defined, this node is alone and should become leader
+        # If no successor is defined, try to discover existing nodes before electing self
         if not self.state.successor_addr:
-            log.info("No successor defined, starting an election to become leader.")
-            self.election_manager.start_election()
+            log.info("No successor defined, attempting to discover ring...")
+            self.ring_client._repair_ring()
+            
+            if not self.state.successor_addr:
+                log.info("Still no successor found, starting an election to become leader.")
+                self.election_manager.start_election()
 
     def stop(self):
         """Stops all components gracefully."""
@@ -134,6 +138,8 @@ class Node:
                 self.replication_manager.handle_replication_message(msg)
             elif msg_type == MSG_ELECTION:
                 self.election_manager.handle_election_message(msg)
+            elif msg_type == MSG_COORDINATOR:
+                self.election_manager.handle_coordinator_message(msg)
             elif msg_type == MSG_HEARTBEAT:
                 # In a more robust system, you'd update a 'last_seen' timestamp
                 # for the predecessor and use it to detect failures.

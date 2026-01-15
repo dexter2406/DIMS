@@ -114,6 +114,7 @@ class TCPRingClient(threading.Thread):
         self.config = config
         self.on_failure = on_failure
         self.running = False
+        self._repair_triggered = False
         self._successor_conn: Optional[socket.socket] = None
 
     def run(self):
@@ -127,11 +128,25 @@ class TCPRingClient(threading.Thread):
                         successor_addr, timeout=self.config.connection_timeout
                     )
                     logger.info("Successfully connected to successor at %s", successor_addr)
+                    # Only trigger election if this connection is the result of a repair/failure
+                    if self._repair_triggered and self.on_failure:
+                        logger.info("Triggering election after successful ring repair.")
+                        self.on_failure()
+                        self._repair_triggered = False
                 except Exception as e:
                     logger.warning("Failed to connect to successor %s: %s", successor_addr, e)
                     self._repair_ring()
-                    if self.on_failure:
-                        self.on_failure()
+                    
+                    # If repair found a successor, mark it so next connect triggers election.
+                    if self.node_state.successor_addr:
+                        logger.info("Repair found successor. Election scheduled after connection.")
+                        self._repair_triggered = True
+                    else:
+                        # If isolated, trigger election immediately (self-elect)
+                        if self.on_failure:
+                            self.on_failure()
+                        self._repair_triggered = False
+
                     time.sleep(self.config.heartbeat_interval)
                     continue
 
@@ -142,8 +157,11 @@ class TCPRingClient(threading.Thread):
                 except Exception as e:
                     logger.warning("Failed to send heartbeat to successor: %s", e)
                     self._close_connection()
-                    if self.on_failure:
+                    self._repair_ring() # Fix: Ensure ring is repaired on heartbeat failure
+                    self._repair_triggered = True
+                    if self.node_state.successor_addr is None and self.on_failure:
                         self.on_failure()
+                        self._repair_triggered = False
             
             time.sleep(self.config.heartbeat_interval)
 

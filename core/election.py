@@ -14,7 +14,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 
 from core.state import NodeState, ROLE_LEADER, ROLE_FOLLOWER
 from network.ring import TCPRingClient
-from common.protocol import create_message, MSG_ELECTION
+from common.protocol import create_message, MSG_ELECTION, MSG_COORDINATOR
 
 logger = logging.getLogger(__name__)
 
@@ -80,12 +80,14 @@ class ElectionManager:
             self.node_state.set_role(ROLE_LEADER)
             self.node_state.leader_id = self.node_state.node_id
             self.is_participating = False
-            # Optionally, send a "COORDINATOR" message to announce the result.
-            return
+            
+            # Announce the winner to the rest of the ring
+            logger.info("Node %s is announcing victory.", self.node_state.node_id)
+            updated_msg = create_message(MSG_COORDINATOR, payload={"leader_id": self.node_state.node_id})
 
         # Case 2: The incoming candidate ID is greater than this node's ID.
         # Forward the message unchanged.
-        if candidate_id > self.node_state.node_id:
+        elif candidate_id > self.node_state.node_id:
             logger.info("Forwarding election message for higher candidate %s.", candidate_id)
             self.is_participating = True # This node is now part of the ongoing election
             updated_msg = create_message(MSG_ELECTION, payload={"candidate_id": candidate_id})
@@ -119,6 +121,30 @@ class ElectionManager:
             # The successor link is probably broken. A new election will likely
             # be triggered by the connection failure logic.
             self.is_participating = False
+            return
+
+    def handle_coordinator_message(self, msg: dict):
+        """
+        Processes the announcement of a new leader.
+        """
+        payload = msg.get("payload", {})
+        leader_id = payload.get("leader_id")
+
+        if leader_id == self.node_state.node_id:
+            # Message has traveled full circle
+            logger.info("Coordinator message returned to leader. Election cycle complete.")
+            return
+
+        logger.info("Node %s updating leader to %s.", self.node_state.node_id, leader_id)
+        self.node_state.leader_id = leader_id
+        self.node_state.set_role(ROLE_FOLLOWER)
+        self.is_participating = False
+
+        # Forward the announcement
+        try:
+            self.ring_client.send_message(create_message(MSG_COORDINATOR, payload))
+        except Exception as e:
+            logger.error("Failed to forward coordinator message: %s", e)
 
 # Example Usage
 if __name__ == '__main__':

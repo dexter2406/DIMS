@@ -1,8 +1,9 @@
 # network/udp_discovery.py
 
 """
-Implements the leader discovery mechanism using UDP broadcast.
+Implements the leader and node discovery mechanism using UDP broadcast.
 - Servers listen for discovery requests and respond if they are the leader.
+- Servers also respond to node queries to facilitate ring repair.
 - Clients broadcast discovery requests to find the leader's HTTP endpoint.
 This avoids hardcoding the leader's address in the clients.
 """
