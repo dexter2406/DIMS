@@ -1,183 +1,182 @@
-以下内容为**冻结版（Frozen）FINAL Implementation Brief**：后续实现与讨论仅允许在此范围内展开；如需改范围，必须先显式更新本 Brief。
-原始proposal见Proposal_Gruppe3_v3.pdf
+The following content is the **Frozen FINAL Implementation Brief**: subsequent implementation and discussion are only allowed within this scope; to change the scope, you must explicitly update this brief first.
+Original proposal: Proposal_Gruppe3_v3.pdf
 
 ---
 
-## 1) 最终架构（Final Architecture：模块与职责边界）
+## 1) Final Architecture (modules and responsibility boundaries)
 
-系统总体：**Scanner Clients →（HTTP REST）→ Leader Server →（内部 TCP ring）→ Followers**；**UDP broadcast 仅用于动态发现 Leader HTTP endpoint**。
+Overall system: **Scanner Clients -> (HTTP REST) -> Leader Server -> (internal TCP ring) -> Followers**; **UDP broadcast is only used for dynamic discovery of the Leader HTTP endpoint**.
 
-### A. 目录/模块（以 `DS_Project_Modules.xlsx / Modules` 为准）
+### A. Directories/Modules (as per `DS_Project_Modules.xlsx / Modules`)
 
 **common/**
 
-* `protocol.py`：**内部消息类型、JSON 格式、字段约定**（所有模块共享“语言”）。
-* `utils.py`：公共工具（序列化、时间戳、重试/超时小工具等）。
-  （Owner：Fang）
+* `protocol.py`: **internal message types, JSON format, field conventions** (shared "language" across modules).
+* `utils.py`: shared utilities (serialization, timestamps, retry/timeout helpers, etc).
+  (Owner: Fang)
 
 **server/**
 
-* `main.py`：**系统入口**；初始化 Node；启动 TCP/UDP/HTTP 三类线程/loop；统一生命周期管理。
-* `config.py`：配置加载（端口、Node ID 等）。
-* `logger.py`：日志写入。
+* `main.py`: **system entry point**; initialize Node; start TCP/UDP/HTTP threads/loops; unified lifecycle management.
+* `config.py`: configuration loading (ports, Node ID, etc).
+* `logger.py`: log writing.
 
 **api/**
 
-* `http_server.py`：对外 HTTP REST（Scanner 提交更新 POST）。
+* `http_server.py`: external HTTP REST (Scanner submits update POST).
 
-  * 若本节点是 Leader：接收更新→落 WAL→更新内存 state→触发复制
-  * 若本节点是 Follower：拒绝/重定向/返回 503 + 引导客户端重新 UDP discover（实现任选其一，但要一致）
+  * If this node is Leader: receive update -> append WAL -> update in-memory state -> trigger replication
+  * If this node is Follower: reject/redirect/return 503 + instruct client to re-run UDP discover (choose one, but be consistent)
 
 **storage/**
 
-* `wal.py`：**WAL（append-only JSON log）**：每次更新追加写入；作为 crash 恢复依据。
-* `recovery.py`：启动时读取 WAL 重放，恢复 in-memory state；恢复节点以 follower 身份加入 ring。
+* `wal.py`: **WAL (append-only JSON log)**: append on each update; basis for crash recovery.
+* `recovery.py`: read WAL on startup and replay to restore in-memory state; recovered node joins ring as follower.
 
 **core/**
 
-* `state.py`：内存 KV inventory + 节点角色/运行状态（leader/follower、node_id、successor 等）。
-* `replication.py`：**被动复制（Passive Replication）**：Leader 将更新通过内部 TCP ring 传播给 followers；followers 应用更新到 state（并可选择性写 WAL）。
-* `election.py`：**Ring-based election（按最高 Node ID）**；由 TCP 断连/心跳超时触发。
+* `state.py`: in-memory KV inventory + node role/runtime status (leader/follower, node_id, successor, etc).
+* `replication.py`: **Passive Replication**: Leader propagates updates to followers via internal TCP ring; followers apply updates to state (and may optionally write WAL).
+* `election.py`: **Ring-based election (highest Node ID)**; triggered by TCP disconnect/heartbeat timeout.
 
 **network/**
 
-* `ring.py`：内部 TCP 邻居长连接（仅维护 successor）；负责连接管理、消息收发、心跳、断链检测、ring repair（跳过失效节点）。
-* `udp_discovery.py`：UDP broadcast：clients/servers 用于定位当前 leader 的 HTTP endpoint（无先验配置）。
+* `ring.py`: internal TCP neighbor long connection (maintains only successor); handles connection management, message send/receive, heartbeats, link failure detection, ring repair (skip failed nodes).
+* `udp_discovery.py`: UDP broadcast: clients/servers use it to locate the current leader HTTP endpoint (no prior config).
 
 **client/**
 
-* `scanner_client.py`：模拟 Scanner：先 UDP discover leader → 再循环通过 HTTP POST 发更新。
+* `scanner_client.py`: simulated Scanner: UDP discover leader -> loop sending updates via HTTP POST.
 
 ---
 
-## 2) 模块协作关系与依赖（Dependency & Collaboration Map）
+## 2) Dependency and Collaboration Map
 
-### 2.1 强依赖（必须先定“共同语言/接口”才能并行）
+### 2.1 Hard dependencies (must define common "language/interfaces" first)
 
-1. **common/protocol.py**（内部消息字段与类型）
-   → 依赖方：`network/ring.py`, `core/election.py`, `core/replication.py`, `core/state.py`
+1. **common/protocol.py** (internal message fields and types)
+   -> dependents: `network/ring.py`, `core/election.py`, `core/replication.py`, `core/state.py`
 
-2. **storage/wal.py 的 record schema**（WAL 每条日志的 JSON 结构）
-   → 依赖方：`api/http_server.py`, `core/replication.py`（是否 follower 也落日志取决于你们实现选择，但 schema 必须固定）, `storage/recovery.py`
+2. **storage/wal.py record schema** (JSON structure for each WAL entry)
+   -> dependents: `api/http_server.py`, `core/replication.py` (whether followers also write logs depends on your implementation choice, but schema must be fixed), `storage/recovery.py`
 
-3. **Node Runtime State 模型（state.py）**
-   → 依赖方：`http_server.py`（判断 leader/follower）、`election.py`（写入 leader 结果）、`replication.py`（apply update）、`ring.py`（邻居/心跳状态）
+3. **Node runtime state model (state.py)**
+   -> dependents: `http_server.py` (leader/follower check), `election.py` (write leader result), `replication.py` (apply update), `ring.py` (neighbor/heartbeat state)
 
-### 2.2 可并行（通过“接口冻结”解除等待）
+### 2.2 Can be parallelized (after "interface freeze")
 
-* `udp_discovery.py` 可独立实现（只要明确：请求/响应报文里包含哪些字段：leader_ip、leader_http_port、leader_id 等）。
-* `scanner_client.py` 可独立实现（只要明确：UDP discover 返回结构 + HTTP endpoint 路径/JSON body）。
-* `logger.py`、`config.py` 可独立实现。
+* `udp_discovery.py` can be implemented independently (as long as request/response fields are clear: leader_ip, leader_http_port, leader_id, etc).
+* `scanner_client.py` can be implemented independently (as long as UDP discover response structure + HTTP endpoint path/JSON body are clear).
+* `logger.py`, `config.py` can be implemented independently.
 
-### 2.3 运行时主链路（端到端）
+### 2.3 Runtime main path (end-to-end)
 
-Scanner POST update → `http_server.py`（leader）→ `wal.py` append → `state.py` apply → `replication.py` emit replication msg → `ring.py` send to successor → follower `ring.py` recv → `replication/state.py` apply（+可选 `wal.py`）
-
----
-
-## 3) 最终技术约束（Final Technical Constraints）
-
-来自 Proposal v3（必须满足）：
-
-1. **语言：Python**
-2. **外部接口：HTTP REST**（Scanner Clients → System）
-3. **内部协调：自定义 socket middleware**
-
-   * **TCP**：持久连接，仅 ring 邻居间通信；用于 election/replication/heartbeats
-   * **UDP broadcast/multicast**：仅用于动态发现 leader HTTP endpoint
-4. **拓扑：动态逻辑 ring**；每个 server **只维护 successor**（无全局成员列表）。
-5. **容错：tolerant to crashes**（通过 timeout/connection failure 侦测失效；恢复节点重放 WAL 并重新加入）。
-
-你额外的冻结约束（来自对话）：
-6) **不用 Docker**（本项目不以容器化作为交付/评分点；直接 python 运行）。
-7) **一致性要求从 eventual consistency 降级为 best-effort propagation**（见下一节“假设/保证”）。
+Scanner POST update -> `http_server.py` (leader) -> `wal.py` append -> `state.py` apply -> `replication.py` emit replication msg -> `ring.py` send to successor -> follower `ring.py` recv -> `replication/state.py` apply (+ optional `wal.py`)
 
 ---
 
-## 4) 最终假设与保证（Assumptions & Guarantees）
+## 3) Final Technical Constraints
 
-### 4.1 我们“保证”的（Scope Guarantees）
+From Proposal v3 (must be satisfied):
 
-* **Crash 容错（基础级）**：
+1. **Language: Python**
+2. **External interface: HTTP REST** (Scanner Clients -> System)
+3. **Internal coordination: custom socket middleware**
 
-  * 通过 TCP 断链或心跳超时检测疑似 crash，并触发 ring repair + election。
-  * 节点重启可通过读取本地 WAL 恢复到“该节点曾经持久化过”的状态，并作为 follower 重新加入。
-* **Leader discovery 可用**：clients/servers 可通过 UDP broadcast 找到当前 leader 的 HTTP endpoint（假设同一网段可广播）。
+   * **TCP**: persistent connections, only between ring neighbors; used for election/replication/heartbeats
+   * **UDP broadcast/multicast**: only for dynamic discovery of leader HTTP endpoint
+4. **Topology: dynamic logical ring**; each server **only maintains successor** (no global membership list).
+5. **Fault tolerance: tolerant to crashes** (detect failures via timeout/connection failure; recovery node replays WAL and rejoins).
 
-### 4.2 我们“不保证”的（Explicitly NOT Guaranteed）
-
-* **不保证一致性收敛/最终一致（No eventual consistency guarantee）**：
-
-  * 更新传播是 best-effort：leader 会尝试经 TCP ring 转发，但不会确保每个 follower 都收到/补齐历史缺口。
-* **不保证零丢数据（End-to-end）**：
-
-  * leader crash、网络抖动、TCP 断连导致的“传播未完成”可能造成部分节点缺失更新；系统继续运行不视为错误。
-* **不保证 exactly-once / 去重**：
-
-  * client 重试或连接抖动可能导致重复更新；除非你们显式在协议里做 `update_id` 幂等，否则默认不保证。
-* **不保证分区容忍与自动合并（Partition healing / conflict resolution）**：
-
-  * 设计中没有强一致或冲突解决协议；不做多主写入与合并。
+Additional frozen constraints (from the conversation):
+6) **No Docker** (this project does not use containerization for delivery/scoring; run directly with python).
+7) **Consistency requirement downgraded from eventual consistency to best-effort propagation** (see next section "Assumptions/Guarantees").
 
 ---
 
-## 5) 明确的 Non-goals（不做的内容）
+## 4) Final Assumptions and Guarantees
 
-为避免范围膨胀，以下明确不做（实施期若出现需求一律拒绝或延后）：
+### 4.1 What we "guarantee" (Scope Guarantees)
 
-1. **不做 Docker / Kubernetes / Compose 交付**
-2. **不做强一致/共识协议**（Raft/Paxos/2PC 等）
-3. **不做“副本追赶/补齐/对账”机制**（无 anti-entropy / gossip 修复 / snapshot 安装）
-4. **不做读扩展与 follower 读**（对外读写规则如需实现，默认只从 leader 服务，避免一致性讨论）
-5. **不做安全/鉴权/加密**（TLS、token、ACL 等）
-6. **不做复杂运维**（监控、metrics、自动部署、故障注入框架等）
-7. **不做复杂客户端生态**（仅保留模拟 scanner_client）
+* **Crash tolerance (basic level)**:
+
+  * Detect suspected crash via TCP disconnect or heartbeat timeout, and trigger ring repair + election.
+  * On restart, a node can read local WAL to recover to the state it previously persisted, then rejoin as a follower.
+* **Leader discovery is available**: clients/servers can find the current leader HTTP endpoint via UDP broadcast (assumes broadcast within the same subnet).
+
+### 4.2 What we explicitly do NOT guarantee
+
+* **No eventual consistency guarantee**:
+
+  * Update propagation is best-effort: the leader attempts to forward via the TCP ring, but does not ensure every follower receives or catches up on historical gaps.
+* **No end-to-end zero data loss**:
+
+  * Leader crash, network jitter, or TCP disconnects can cause incomplete propagation; the system continues running and this is not considered an error.
+* **No exactly-once / dedup**:
+
+  * Client retries or connection jitter can cause duplicate updates; unless you explicitly add `update_id` idempotency in the protocol, it is not guaranteed.
+* **No partition healing / conflict resolution**:
+
+  * The design has no strong consistency or conflict resolution protocol; no multi-leader writes or merges.
 
 ---
 
-## 6) Excel 复用说明（避免重复内容）
+## 5) Explicit Non-goals (out of scope)
 
-* **模块拆分与负责人**：以 `DS_Project_Modules.xlsx / Modules` 为当前冻结版本；后续任何“增删文件/迁移职责”都必须同步更新该表，避免口头分歧。
+To avoid scope creep, the following are explicitly out of scope (requests during implementation should be rejected or deferred):
 
+1. **No Docker / Kubernetes / Compose delivery**
+2. **No strong consistency/consensus protocols** (Raft/Paxos/2PC, etc)
+3. **No "replica catch-up/repair/reconciliation" mechanisms** (no anti-entropy / gossip repair / snapshot install)
+4. **No read scaling and follower reads** (if external reads/writes are implemented, default to leader-only to avoid consistency debate)
+5. **No security/auth/encryption** (TLS, tokens, ACLs, etc)
+6. **No complex ops** (monitoring, metrics, auto deployment, failure injection frameworks, etc)
+7. **No complex client ecosystem** (keep only the simulated scanner_client)
 
 ---
-## 目录层级设计
+
+## 6) Excel Reuse Note (avoid duplicate content)
+
+* **Module breakdown and owners**: use `DS_Project_Modules.xlsx / Modules` as the current frozen version; any future "add/remove files or shift responsibilities" must update that table to avoid verbal divergence.
+
+---
+## Directory Structure Design
 .
-├── common/
-│   ├── protocol.py        # 内部消息协议定义（JSON schema / message types）
-│   └── utils.py           # 公共工具函数（序列化、时间戳、重试等）
-│   # Owner: Fang
-│
-├── server/
-│   ├── main.py            # 系统入口；启动 TCP / UDP / HTTP 线程
-│   ├── config.py          # 配置加载（端口、Node ID 等）
-│   └── logger.py          # 日志系统
-│   # Owners: Fang (main), Davud (config, logger)
-│
-├── api/
-│   └── http_server.py     # 对外 HTTP REST 接口（Scanner → System）
-│                          # - Leader: 接收更新、写 WAL、触发复制
-│                          # - Follower: 拒绝 / redirect / 503
-│   # Owner: Mohamed
-│
-├── storage/
-│   ├── wal.py             # Write-Ahead Log（append-only JSON）
-│   └── recovery.py        # 启动时 WAL replay，节点恢复并 rejoin
-│   # Owner: Mohamed
-│
-├── core/
-│   ├── state.py           # 内存库存状态 + 节点运行时状态
-│   ├── replication.py    # 被动复制（Leader → Followers via ring）
-│   └── election.py       # Ring-based election（最高 Node ID）
-│   # Owner: Fang (election, replicatoin), Mohamed (state)
-│
-├── network/
-│   ├── ring.py            # TCP ring 管理（successor、heartbeat、repair）
-│   └── udp_discovery.py   # UDP broadcast：发现 Leader HTTP endpoint
-│   # Owner: Fang (ring), Davud (udp_discovery)
-│
-├── client/
-│   └── scanner_client.py  # 模拟 Scanner 客户端（UDP discover + HTTP POST）
-│   # Owner: Davud
-│
-└── README.md              # 项目说明、启动方式、demo 指引
+|-- common/
+|   |-- protocol.py        # Internal message protocol definitions (JSON schema / message types)
+|   |-- utils.py           # Shared utility functions (serialization, timestamps, retries, etc)
+|   # Owner: Fang
+|
+|-- server/
+|   |-- main.py            # System entry point; starts TCP / UDP / HTTP threads
+|   |-- config.py          # Configuration loading (ports, Node ID, etc)
+|   |-- logger.py          # Logging system
+|   # Owners: Fang (main), Davud (config, logger)
+|
+|-- api/
+|   |-- http_server.py     # External HTTP REST interface (Scanner -> System)
+|                          # - Leader: receive updates, write WAL, trigger replication
+|                          # - Follower: reject / redirect / 503
+|   # Owner: Mohamed
+|
+|-- storage/
+|   |-- wal.py             # Write-Ahead Log (append-only JSON)
+|   |-- recovery.py        # Replay WAL on startup; recover node and rejoin
+|   # Owner: Mohamed
+|
+|-- core/
+|   |-- state.py           # In-memory inventory state + node runtime state
+|   |-- replication.py     # Passive replication (Leader -> Followers via ring)
+|   |-- election.py        # Ring-based election (highest Node ID)
+|   # Owner: Fang (election, replication), Mohamed (state)
+|
+|-- network/
+|   |-- ring.py            # TCP ring management (successor, heartbeat, repair)
+|   |-- udp_discovery.py   # UDP broadcast: discover Leader HTTP endpoint
+|   # Owner: Fang (ring), Davud (udp_discovery)
+|
+|-- client/
+|   |-- scanner_client.py  # Simulated Scanner client (UDP discover + HTTP POST)
+|   # Owner: Davud
+|
+|-- README.md              # Project overview, startup, demo guide
