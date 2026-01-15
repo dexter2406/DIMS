@@ -5,7 +5,7 @@ Original proposal: Proposal_Gruppe3_v3.pdf
 
 ## 1) Final Architecture (modules and responsibility boundaries)
 
-Overall system: **Scanner Clients -> (HTTP REST) -> Leader Server -> (internal TCP ring) -> Followers**; **UDP broadcast is only used for dynamic discovery of the Leader HTTP endpoint**.
+Overall system: **Scanner Clients -> (HTTP REST) -> Leader Server -> (internal TCP ring) -> Followers**; **UDP broadcast is used for dynamic discovery of the Leader HTTP endpoint and node discovery during ring repair**.
 
 ### A. Directories/Modules (as per `DS_Project_Modules.xlsx / Modules`)
 
@@ -42,7 +42,7 @@ Overall system: **Scanner Clients -> (HTTP REST) -> Leader Server -> (internal T
 **network/**
 
 * `ring.py`: internal TCP neighbor long connection (maintains only successor); handles connection management, message send/receive, heartbeats, link failure detection, ring repair (skip failed nodes).
-* `udp_discovery.py`: UDP broadcast: clients/servers use it to locate the current leader HTTP endpoint (no prior config).
+* `udp_discovery.py`: UDP broadcast: clients/servers use it to locate the current leader HTTP endpoint and perform node discovery for ring repair (no prior config).
 
 **client/**
 
@@ -65,7 +65,7 @@ Overall system: **Scanner Clients -> (HTTP REST) -> Leader Server -> (internal T
 
 ### 2.2 Can be parallelized (after "interface freeze")
 
-* `udp_discovery.py` can be implemented independently (as long as request/response fields are clear: leader_ip, leader_http_port, leader_id, etc).
+* `udp_discovery.py` can be implemented independently (as long as request/response fields are clear: leader_ip, leader_http_port, leader_id for leader discovery; node_id, tcp_addr for node discovery).
 * `scanner_client.py` can be implemented independently (as long as UDP discover response structure + HTTP endpoint path/JSON body are clear).
 * `logger.py`, `config.py` can be implemented independently.
 
@@ -84,7 +84,7 @@ From Proposal v3 (must be satisfied):
 3. **Internal coordination: custom socket middleware**
 
    * **TCP**: persistent connections, only between ring neighbors; used for election/replication/heartbeats
-   * **UDP broadcast/multicast**: only for dynamic discovery of leader HTTP endpoint
+   * **UDP broadcast/multicast**: used for dynamic discovery of leader HTTP endpoint and peer discovery for ring repair
 4. **Topology: dynamic logical ring**; each server **only maintains successor** (no global membership list).
 5. **Fault tolerance: tolerant to crashes** (detect failures via timeout/connection failure; recovery node replays WAL and rejoins).
 
@@ -172,7 +172,7 @@ To avoid scope creep, the following are explicitly out of scope (requests during
 |
 |-- network/
 |   |-- ring.py            # TCP ring management (successor, heartbeat, repair)
-|   |-- udp_discovery.py   # UDP broadcast: discover Leader HTTP endpoint
+|   |-- udp_discovery.py   # UDP broadcast: discover Leader HTTP endpoint and active nodes
 |   # Owner: Fang (ring), Davud (udp_discovery)
 |
 |-- client/
