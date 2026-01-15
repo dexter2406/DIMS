@@ -120,35 +120,42 @@ class TCPRingClient(threading.Thread):
     def run(self):
         self.running = True
         while self.running:
-            successor_addr = self.node_state.successor_addr
-            if successor_addr and not self._is_connected():
-                try:
-                    logger.info("Attempting to connect to successor at %s...", successor_addr)
-                    self._successor_conn = socket.create_connection(
-                        successor_addr, timeout=self.config.connection_timeout
-                    )
-                    logger.info("Successfully connected to successor at %s", successor_addr)
-                    # Only trigger election if this connection is the result of a repair/failure
-                    if self._repair_triggered and self.on_failure:
-                        logger.info("Triggering election after successful ring repair.")
-                        self.on_failure()
-                        self._repair_triggered = False
-                except Exception as e:
-                    logger.warning("Failed to connect to successor %s: %s", successor_addr, e)
+            if not self._is_connected():
+                # Proactively try to find a successor if we don't have one (dynamic join/repair)
+                if not self.node_state.successor_addr:
                     self._repair_ring()
-                    
-                    # If repair found a successor, mark it so next connect triggers election.
                     if self.node_state.successor_addr:
-                        logger.info("Repair found successor. Election scheduled after connection.")
                         self._repair_triggered = True
-                    else:
-                        # If isolated, trigger election immediately (self-elect)
-                        if self.on_failure:
-                            self.on_failure()
-                        self._repair_triggered = False
 
-                    time.sleep(self.config.heartbeat_interval)
-                    continue
+                successor_addr = self.node_state.successor_addr
+                if successor_addr:
+                    try:
+                        logger.info("Attempting to connect to successor at %s...", successor_addr)
+                        self._successor_conn = socket.create_connection(
+                            successor_addr, timeout=self.config.connection_timeout
+                        )
+                        logger.info("Successfully connected to successor at %s", successor_addr)
+                        # Only trigger election if this connection is the result of a repair/failure
+                        if self._repair_triggered and self.on_failure:
+                            logger.info("Triggering election after successful ring repair.")
+                            self.on_failure()
+                            self._repair_triggered = False
+                    except Exception as e:
+                        logger.warning("Failed to connect to successor %s: %s", successor_addr, e)
+                        self._repair_ring()
+                        
+                        # If repair found a successor, mark it so next connect triggers election.
+                        if self.node_state.successor_addr:
+                            logger.info("Repair found successor. Election scheduled after connection.")
+                            self._repair_triggered = True
+                        else:
+                            # If isolated, trigger election immediately (self-elect)
+                            if self.on_failure:
+                                self.on_failure()
+                            self._repair_triggered = False
+
+                        time.sleep(self.config.heartbeat_interval)
+                        continue
 
             # If connected, send periodic heartbeats
             if self._is_connected():

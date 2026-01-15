@@ -50,14 +50,14 @@ class ReplicationManager:
             logger.warning("A non-leader node attempted to replicate an update.")
             return
 
-        logger.info("Leader replicating update: %s", update_data)
+        logger.info(f"Leader replicating update: {update_data}")
         replication_msg = create_message(MSG_REPLICATION, payload=update_data)
         
         try:
             self.ring_client.send_message(replication_msg)
             logger.info("Replication message sent to successor.")
         except Exception as e:
-            logger.error("Error sending replication message: %s", e)
+            logger.error(f"Error sending replication message: {e}")
 
     def handle_replication_message(self, msg: dict):
         """
@@ -75,7 +75,7 @@ class ReplicationManager:
             logger.warning("Received replication message with no payload.")
             return
             
-        logger.info("Follower received replication message: %s", payload)
+        logger.info(f"Follower received replication message: {payload}")
 
         # The core logic of applying the state change
         # This must match the operation performed on the leader
@@ -100,14 +100,14 @@ class ReplicationManager:
             self.ring_client.send_message(original_message_bytes)
             logger.info("Follower forwarded replication message to its successor.")
         except Exception as e:
-            logger.error("Follower failed to forward replication message: %s", e)
+            logger.error(f"Follower failed to forward replication message: {e}")
 
 # Example Usage
 if __name__ == '__main__':
     # This is difficult to test in isolation.
     # The integration with the TCP ring components is essential.
-    logger.info("ReplicationManager logic is defined.")
-    logger.info("Integration testing with the main application loop is required to verify correctness.")
+    print("ReplicationManager logic is defined.")
+    print("Integration testing with the main application loop is required to verify correctness.")
     
     # A conceptual test:
     # 1. Mock a Leader NodeState and a TCPRingClient.
@@ -118,4 +118,4 @@ if __name__ == '__main__':
     # 6. Call `handle_replication_message` and verify the state and WAL are updated,
     #    and that the follower's ring client also calls `send_message`.
     
-    logger.info("Conceptual test plan created.")
+    print("\nConceptual test plan created.")
