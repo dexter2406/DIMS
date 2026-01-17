@@ -9,6 +9,7 @@ venv/
 env/
 
 # Logs and Runtime Data
+/debug_log/*
 
 # IDE and System files
 .vscode/

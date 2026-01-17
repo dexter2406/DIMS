@@ -1,19 +1,14 @@
 # client/scanner_client.py
 
 """
-A simulated scanner client that represents an edge device in the inventory system.
-Its workflow is:
-1. Use UDP broadcast to discover the current leader node.
-2. Periodically send inventory updates to the leader via HTTP POST requests.
-3. If an update fails, it will re-discover the leader and retry.
+Scanner client utilities for discovering the leader and sending updates.
+Behavioral simulations live in a separate script for easier customization.
 """
 
 import requests
 import json
-import time
-import random
 import logging
-from typing import Optional
+from typing import Optional, Tuple
 
 # Add project root to path to allow absolute imports
 import sys
@@ -51,23 +46,24 @@ class ScannerClient:
             self.leader_http_addr = None
             return False
 
-    def send_update(self, item_id: str, quantity: int) -> bool:
+    def send_update(self, item_id: str, op: str, quantity: int) -> Tuple[bool, int]:
         """
         Sends a single inventory update to the discovered leader.
 
         Args:
             item_id (str): The ID of the item to update.
-            quantity (int): The new quantity for the item.
+            op (str): Inventory operation (IN or SHIP).
+            quantity (int): The quantity delta for the item.
 
         Returns:
-            bool: True if the update was successfully accepted, False otherwise.
+            Tuple[bool, int]: (accepted, status_code). Status code 0 means no response.
         """
         if not self.leader_http_addr:
             logger.warning("Cannot send update: No leader is known.")
-            return False
+            return False, 0
 
         url = f"{self.leader_http_addr}/update"
-        payload = {"item_id": item_id, "quantity": quantity}
+        payload = {"item_id": item_id, "op": op, "quantity": quantity}
         headers = {'Content-Type': 'application/json'}
 
         try:
@@ -76,77 +72,28 @@ class ScannerClient:
 
             if response.status_code == 202: # Accepted
                 logger.info("Update accepted by leader.")
-                return True
+                return True, response.status_code
             # Handle cases where the target node is not the leader
             elif response.status_code == 503:
                 logger.warning("Update rejected: Node is not the leader. Will rediscover.")
                 self.leader_http_addr = None # Force rediscovery
-                return False
+                return False, response.status_code
             else:
                 logger.warning(
                     "Failed to send update. Status: %s, Body: %s",
                     response.status_code,
                     response.text,
                 )
-                return False
+                return False, response.status_code
 
         except requests.exceptions.RequestException as e:
             logger.error("Error sending update: %s", e)
             self.leader_http_addr = None # Assume leader is down, force rediscovery
-            return False
-
-    def run_simulation(self, interval_seconds: int = 3):
-        """
-        Runs a continuous simulation of scanning items for a few iterations.
-
-        Args:
-            interval_seconds (int): The time to wait between sending updates.
-        """
-        item_counter = 0
-        for _ in range(3): # Run for 3 iterations then exit
-            # Step 1: Ensure we have a leader
-            if not self.leader_http_addr:
-                if not self.find_leader():
-                    time.sleep(interval_seconds)
-                    continue # Try again after a delay
-            
-            # Step 2: Generate and send a simulated update
-            item_id = f"item-SKU-{1000 + item_counter % 10}" # Cycle through 10 items
-            quantity = random.randint(1, 200)
-            
-            if not self.send_update(item_id, quantity):
-                logger.warning("Retrying after failed update...")
-                # The send_update method clears the leader address on failure,
-                # so the next loop iteration will trigger rediscovery.
-                time.sleep(1) # Shorter delay for immediate retry
-                continue
-
-            item_counter += 1
-            logger.info("--- Waiting for %s seconds before next scan ---", interval_seconds)
-            time.sleep(interval_seconds)
+            return False, 0
 
 
 if __name__ == '__main__':
-    # To run this client, you need a server node running.
-    # The server should be started first.
-
     log_file = build_log_path("client")
     configure_logging(log_file, level=logging.INFO, to_console=True)
-
-    logger.info("--- Starting DIMS Scanner Client Simulation ---")
-    logger.info("This client will first use UDP broadcast to find the leader.")
-    logger.info("Once found, it will send POST requests to the /update endpoint.")
-    logger.info("If the connection fails or the node is not the leader, it will rediscover.")
-    logger.info("Press Ctrl+C to stop.")
-    
-    client_config = AppConfig()
-    
-    # You can override the broadcast address if needed, e.g., for local testing
-    # client_config.udp_broadcast_addr = 'localhost'
-    
-    client = ScannerClient(client_config)
-    
-    try:
-        client.run_simulation(interval_seconds=5)
-    except KeyboardInterrupt:
-        logger.info("Scanner client simulation stopped.")
+    logger.info("ScannerClient provides leader discovery and update helpers.")
+    logger.info("Use `python -m client.scanner_simulator -h` for simulation runs.")

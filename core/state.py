@@ -137,8 +137,8 @@ if __name__ == "__main__":
     logger.info(state)
 
     # Perform some inventory updates
-    state.apply_inventory_op("item:A", "IN", 100)
-    state.apply_inventory_op("item:B", "IN", 250)
+    state.apply_inventory_op("itemA", "IN", 100)
+    state.apply_inventory_op("itemB", "IN", 250)
     
     # Set a successor
     state.set_successor(('localhost', 9001))
@@ -149,5 +149,5 @@ if __name__ == "__main__":
     logger.info("Current Inventory: %s", current_inventory)
 
     assert state.is_leader()
-    assert current_inventory["item:A"] == 100
+    assert current_inventory["itemA"] == 100
     logger.info("NodeState basic operations are working correctly.")

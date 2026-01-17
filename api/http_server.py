@@ -44,11 +44,13 @@ class APRequestHandler(BaseHTTPRequestHandler):
         parsed_url = urlparse(self.path)
         if parsed_url.path == '/status':
             node_state: NodeState = self.server.node_state
+            inventory = node_state.get_inventory()
             status_body = {
                 "node_id": node_state.node_id,
                 "role": node_state.role,
                 "leader_id": node_state.leader_id,
-                "inventory_size": len(node_state.inventory)
+                "inventory_size": len(inventory),
+                "total_units": sum(inventory.values())
             }
             self._send_response(200, status_body)
         elif parsed_url.path == '/inventory':
@@ -63,7 +65,7 @@ class APRequestHandler(BaseHTTPRequestHandler):
                 for item_id, quantity in inventory.items():
                     item_type, sep, _uid = item_id.partition(":")
                     if not sep or not item_type:
-                        item_type = "unknown"
+                        item_type = item_id
                     totals[item_type] = totals.get(item_type, 0) + quantity
                 self._send_response(200, {"by_type": totals})
             else:

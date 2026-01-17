@@ -86,8 +86,8 @@ if __name__ == "__main__":
 
     # Simulate some operations being logged
     logger.info("Appending records to the WAL...")
-    op1 = {"op": "IN", "item_id": "sku:X", "quantity": 50}
-    op2 = {"op": "IN", "item_id": "sku:Y", "quantity": 120}
+    op1 = {"op": "IN", "item_id": "skuX", "quantity": 50}
+    op2 = {"op": "IN", "item_id": "skuY", "quantity": 120}
     wal.append(op1)
     wal.append(op2)
     

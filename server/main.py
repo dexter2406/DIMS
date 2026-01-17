@@ -46,8 +46,7 @@ def _peek_node_id_from_args(default_id: int) -> int:
 def _valid_item_id(item_id: str) -> bool:
     if not isinstance(item_id, str):
         return False
-    item_type, sep, uid = item_id.partition(":")
-    return sep == ":" and bool(item_type) and bool(uid)
+    return bool(item_id.strip())
 
 class Node:
     """
@@ -173,7 +172,7 @@ class Node:
             op = update_payload.get("op")
             quantity = update_payload.get("quantity")
             if not _valid_item_id(item_id):
-                return False, 400, {"error": "Invalid item_id. Expected format 'type:uid'."}
+                return False, 400, {"error": "Invalid item_id. Expected non-empty string."}
 
             if not isinstance(op, str):
                 return False, 400, {"error": "Invalid op. Expected IN or SHIP."}

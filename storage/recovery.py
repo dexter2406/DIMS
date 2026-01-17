@@ -83,10 +83,10 @@ if __name__ == '__main__':
 
     # 2. Create a WAL and log some operations
     wal = WriteAheadLog(wal_path=demo_wal_path)
-    wal.append({"op": "IN", "item_id": "item:R", "quantity": 99})
-    wal.append({"op": "IN", "item_id": "item:S", "quantity": 199})
+    wal.append({"op": "IN", "item_id": "itemR", "quantity": 99})
+    wal.append({"op": "IN", "item_id": "itemS", "quantity": 199})
     wal.append({"op": "UNKNOWN", "data": "some other event"}) # Should be skipped
-    wal.append({"op": "IN", "item_id": "item:R", "quantity": 6}) # Update existing
+    wal.append({"op": "IN", "item_id": "itemR", "quantity": 6}) # Update existing
     wal.close()
 
     # 3. Simulate a node restart by creating a fresh state object
@@ -102,8 +102,8 @@ if __name__ == '__main__':
     final_inventory = fresh_node_state.get_inventory()
     logger.info("State after recovery: %s", final_inventory)
     
-    assert final_inventory.get("item:R") == 105
-    assert final_inventory.get("item:S") == 199
+    assert final_inventory.get("itemR") == 105
+    assert final_inventory.get("itemS") == 199
     
     # Clean up
     recovery_wal.close()
