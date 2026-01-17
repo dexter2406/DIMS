@@ -6,8 +6,8 @@ A Python-based distributed inventory management system demonstrating leader elec
 
 The project is organized into the following modules:
 
-- `api/`: External HTTP REST interface for clients.
-- `client/`: A simulated scanner client.
+- `api/`: External HTTP JSON (REST-style) interface for clients.
+- `client/`: Scanner client helpers and a CLI simulator.
 - `common/`: Shared code, like the communication protocol.
 - `core/`: Core logic for state management, replication, and leader election.
 - `network/`: TCP ring and UDP discovery implementation.
@@ -77,15 +77,21 @@ python -m server.main --node-id 2 --http-port 8002 --tcp-port 9002
 
 You can add more nodes the same way (unique node IDs and ports).
 
-### 3. Start the Scanner Client
+### 3. Run the Scanner Simulator
 
-The client will automatically discover the leader using UDP broadcast and start sending updates. Open a third terminal:
+The simulator will discover the leader via UDP broadcast and send deterministic IN/SHIP updates. Open a third terminal:
 
 ```bash
-python -m client.scanner_client
+python -m client.scanner_simulator --op IN --type sku --start-no 1000 --num 5
 ```
 
-The client logs updates and automatically handles leader changes if a leader node fails and a new one is elected.
+To ship items, use:
+
+```bash
+python -m client.scanner_simulator --op SHIP --type sku --start-no 1000 --num 5
+```
+
+The simulator logs updates and automatically handles leader changes if a leader node fails and a new one is elected.
 
 ### Ports and Discovery
 
@@ -105,9 +111,19 @@ The client logs updates and automatically handles leader changes if a leader nod
 - **Leader Discovery**: Clients use UDP broadcast to find the leader's HTTP endpoint.
 - **Node Discovery for Ring Repair**: Nodes use UDP broadcast to find peers when repairing or joining the ring.
 - **Ring-based Communication**: Nodes are organized in a logical ring and communicate over TCP. Each node only knows about its direct successor.
-- **Replication**: The leader writes updates to a Write-Ahead Log (WAL), applies them to its state, and propagates them around the ring. Followers receive the updates, apply them, and forward the replication message.
+- **Inventory Updates**: Clients send IN/SHIP operations with a `quantity` delta; the leader persists to WAL, applies the delta, and replicates the same op to followers.
+- **Replication**: The leader propagates updates around the ring. Followers apply the op, persist to their WAL, and forward the message.
 - **Leader Election**: If a node detects a failure (e.g., successor unreachable), a ring-based election is triggered. The node with the highest ID wins and announces the leader via a coordinator message.
 - **Crash Recovery**: When a node restarts, it replays its WAL to recover its state before rejoining the ring as a follower.
+
+## HTTP API (REST-style)
+
+- `POST /update`: Accepts inventory deltas.
+  - Body: `{"item_id":"sku1000","op":"IN|SHIP","quantity":1}`
+  - Returns 202 on success, 409 if insufficient inventory for SHIP.
+- `GET /status`: Returns node role and inventory summary (`inventory_size`, `total_units`).
+- `GET /inventory`: Returns all items.
+- `GET /inventory?by_type=1`: Aggregates by `type` if the `item_id` contains `type:subtype`; otherwise groups by full `item_id`.
 
 ## Progress & Milestones
 
@@ -117,15 +133,19 @@ The client logs updates and automatically handles leader changes if a leader nod
 - Planned: multi-node stress checks and broader failure simulations.
 
 ### Immediate Next Step (1-2 Days)
-- **Scenario Verification**: Validate leader crash -> ring repair -> election convergence -> client rediscovery, and confirm replication resumes after repair.
+- **Scenario Verification**: Validate leader crash -> ring repair -> election convergence -> client rediscovery -> confirm replication resumes after repair -> 2 physical machine expeirments.
 
 ### Weekly Milestones (Roadmap to Completion)
 
 1.  **Milestone 1: Robust Networking & Discovery (Done)**
-    - Implementation of TCP message framing, dynamic IP resolution for discovery, and basic fault detection wiring.
-2.  **Milestone 2: Reliable Replication & State Consistency (In Progress)**
-    - Implementation: Hardening the `ReplicationManager` to handle edge cases in message forwarding and ensuring followers correctly persist replicated updates to their local WAL.
-3.  **Milestone 3: Resilient Ring Management & Election Stability (In Progress)**
-    - Implementation: Finalizing the ring-based election logic to handle complex scenarios like concurrent elections or multiple node failures, ensuring the ring always closes correctly.
-4.  **Milestone 4: Comprehensive Scenario-based Testing (Planned)**
-    - Testing: Validating the entire system against specific failure scenarios, including Leader crashes, rapid node churn, network latency, and full cluster recovery from WAL.
+    TCP message framing, dynamic IP resolution for discovery, and basic fault detection wiring.
+2.  **Milestone 2: Reliable Replication & State Consistency (Done)**
+    Replication forwarding across the ring, follower WAL persistence, and inventory delta application.
+3.  **Milestone 3: Resilient Ring Management & Election Stability (Done)**
+    Election propagation, coordinator handling, and ring repair behavior on link failure.
+4.  **Milestone 4: Comprehensive Scenario-based Testing (In Progress)**
+    - Leader crash -> repair -> election convergence -> client rediscovery.
+    - Replication continuity after repair (no lost updates).
+    - Rapid node churn with UDP discovery and ring closure.
+    - Recovery from WAL on restart with correct inventory state.
+    - 2 Physical Machines tests
