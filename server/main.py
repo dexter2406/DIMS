@@ -43,6 +43,12 @@ def _peek_node_id_from_args(default_id: int) -> int:
                 return default_id
     return default_id
 
+def _valid_item_id(item_id: str) -> bool:
+    if not isinstance(item_id, str):
+        return False
+    item_type, sep, uid = item_id.partition(":")
+    return sep == ":" and bool(item_type) and bool(uid)
+
 class Node:
     """
     Represents a single node in the DIMS cluster, encapsulating all its components.
@@ -149,7 +155,7 @@ class Node:
         except Exception as e:
             log.error(f"Error handling TCP message: {e}")
 
-    def handle_http_update(self, update_payload: dict) -> bool:
+    def handle_http_update(self, update_payload: dict):
         """
         Callback for the HTTP server when a valid update is received.
         This function orchestrates the leader's responsibilities:
@@ -159,30 +165,59 @@ class Node:
         """
         if not self.state.is_leader():
             log.warning("Non-leader received an update request. This should not happen.")
-            return False
+            return False, 503, {"error": "Service Unavailable"}
             
         try:
             # Reconstruct the log record to be stored
             item_id = update_payload.get("item_id")
+            op = update_payload.get("op")
             quantity = update_payload.get("quantity")
-            if item_id is None or quantity is None:
-                return False
+            if not _valid_item_id(item_id):
+                return False, 400, {"error": "Invalid item_id. Expected format 'type:uid'."}
 
-            wal_record = {"op": "UPDATE", "item_id": item_id, "quantity": quantity}
+            if not isinstance(op, str):
+                return False, 400, {"error": "Invalid op. Expected IN or SHIP."}
+
+            op = op.upper()
+            if op not in {"IN", "SHIP"}:
+                return False, 400, {"error": "Invalid op. Expected IN or SHIP."}
+
+            if not isinstance(quantity, int) or quantity <= 0:
+                return False, 400, {"error": "Invalid quantity. Expected positive integer."}
+
+            ok, new_qty, err = self.state.apply_inventory_op(
+                item_id,
+                op,
+                quantity,
+                apply=False,
+            )
+            if not ok:
+                status_code = 409 if err == "insufficient_inventory" else 400
+                return False, status_code, {"error": "Insufficient inventory."}
+
+            wal_record = {"op": op, "item_id": item_id, "quantity": quantity}
             
             # 1. Log to WAL for durability
             self.wal.append(wal_record)
             
             # 2. Apply to in-memory state
-            self.state.update_inventory(item_id, quantity)
+            ok, new_qty, err = self.state.apply_inventory_op(item_id, op, quantity, apply=True)
+            if not ok:
+                log.error("Failed to apply inventory op after WAL append: %s", err)
+                return False, 500, {"error": "Internal error applying inventory update."}
             
             # 3. Trigger replication to followers
-            self.replication_manager.replicate_update(update_payload)
+            replication_payload = {
+                "item_id": item_id,
+                "op": op,
+                "quantity": quantity,
+            }
+            self.replication_manager.replicate_update(replication_payload)
             
-            return True
+            return True, 202, {"status": "Accepted", "item_id": item_id, "quantity": new_qty}
         except Exception as e:
             log.error(f"Error processing HTTP update: {e}")
-            return False
+            return False, 500, {"error": "Internal Server Error"}
 
 def main():
     """

@@ -80,16 +80,28 @@ class ReplicationManager:
         # The core logic of applying the state change
         # This must match the operation performed on the leader
         item_id = payload.get("item_id")
+        op = payload.get("op")
         quantity = payload.get("quantity")
 
-        if item_id is not None and quantity is not None:
-            # Apply to in-memory state
-            self.node_state.update_inventory(item_id, quantity)
-            
-            # Optionally, follower also writes to its WAL for durability
-            if self.wal:
-                wal_record = {"op": "UPDATE", "item_id": item_id, "quantity": quantity}
-                self.wal.append(wal_record)
+        if item_id is None or op is None or quantity is None:
+            logger.warning("Received replication message with missing fields: %s", payload)
+            return
+
+        ok, _new_qty, err = self.node_state.apply_inventory_op(item_id, op, quantity, apply=False)
+        if not ok:
+            logger.error("Replication message failed validation: %s", err)
+            return
+
+        # Optionally, follower also writes to its WAL for durability
+        if self.wal:
+            wal_record = {"op": str(op).upper(), "item_id": item_id, "quantity": quantity}
+            self.wal.append(wal_record)
+
+        # Apply to in-memory state
+        ok, _new_qty, err = self.node_state.apply_inventory_op(item_id, op, quantity, apply=True)
+        if not ok:
+            logger.error("Failed to apply replicated update: %s", err)
+            return
 
         # The message needs to be propagated around the ring
         # The follower re-sends the exact same message to its successor.

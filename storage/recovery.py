@@ -45,12 +45,24 @@ class RecoveryManager:
             try:
                 # This logic must be kept in sync with how operations are logged
                 op_type = record.get("op")
-                if op_type == "UPDATE":
+                if op_type in {"IN", "SHIP"}:
                     item_id = record.get("item_id")
                     quantity = record.get("quantity")
                     if item_id is not None and quantity is not None:
-                        self.node_state.update_inventory(item_id, quantity)
-                        recovered_ops += 1
+                        ok, _new_qty, err = self.node_state.apply_inventory_op(
+                            item_id,
+                            op_type,
+                            quantity,
+                            apply=True,
+                        )
+                        if ok:
+                            recovered_ops += 1
+                        else:
+                            logger.warning(
+                                "Skipping invalid record during recovery: %s (%s)",
+                                record,
+                                err,
+                            )
                 else:
                     logger.warning("Skipping unknown record type during recovery: %s", op_type)
             except Exception as e:
@@ -71,10 +83,10 @@ if __name__ == '__main__':
 
     # 2. Create a WAL and log some operations
     wal = WriteAheadLog(wal_path=demo_wal_path)
-    wal.append({"op": "UPDATE", "item_id": "item-R", "quantity": 99})
-    wal.append({"op": "UPDATE", "item_id": "item-S", "quantity": 199})
+    wal.append({"op": "IN", "item_id": "item:R", "quantity": 99})
+    wal.append({"op": "IN", "item_id": "item:S", "quantity": 199})
     wal.append({"op": "UNKNOWN", "data": "some other event"}) # Should be skipped
-    wal.append({"op": "UPDATE", "item_id": "item-R", "quantity": 105}) # Update existing
+    wal.append({"op": "IN", "item_id": "item:R", "quantity": 6}) # Update existing
     wal.close()
 
     # 3. Simulate a node restart by creating a fresh state object
@@ -90,8 +102,8 @@ if __name__ == '__main__':
     final_inventory = fresh_node_state.get_inventory()
     logger.info("State after recovery: %s", final_inventory)
     
-    assert final_inventory.get("item-R") == 105
-    assert final_inventory.get("item-S") == 199
+    assert final_inventory.get("item:R") == 105
+    assert final_inventory.get("item:S") == 199
     
     # Clean up
     recovery_wal.close()

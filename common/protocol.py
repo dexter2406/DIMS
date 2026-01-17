@@ -59,7 +59,7 @@ def parse_message(data: bytes) -> Dict[str, Any]:
 # Example Usage (for demonstration)
 if __name__ == "__main__":
     # Example: Creating a replication message
-    update_payload = {"item_id": "item-123", "quantity": 10}
+    update_payload = {"item_id": "sku:123", "op": "IN", "quantity": 10}
     replication_msg = create_message(MSG_REPLICATION, payload=update_payload)
     logger.info("Serialized replication message: %s", replication_msg)
 
@@ -67,7 +67,7 @@ if __name__ == "__main__":
     parsed_msg = parse_message(replication_msg)
     logger.info("Parsed message: %s", parsed_msg)
     assert parsed_msg["type"] == MSG_REPLICATION
-    assert parsed_msg["payload"]["item_id"] == "item-123"
+    assert parsed_msg["payload"]["item_id"] == "sku:123"
 
     # Example: Election message
     election_msg = create_message(MSG_ELECTION, payload={"candidate_id": 99})

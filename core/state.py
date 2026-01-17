@@ -62,6 +62,50 @@ class NodeState:
             self.inventory[item_id] = quantity
             return True # In a real app, might have validation
 
+    def apply_inventory_op(
+        self,
+        item_id: str,
+        op: str,
+        quantity: int,
+        apply: bool = True,
+    ) -> Tuple[bool, Optional[int], Optional[str]]:
+        """
+        Applies an inventory operation (IN/SHIP) and returns the new quantity.
+
+        Returns:
+            (ok, new_quantity, error_code)
+        """
+        with self._lock:
+            if not isinstance(quantity, int) or quantity <= 0:
+                return False, None, "invalid_quantity"
+
+            if not isinstance(op, str):
+                return False, None, "invalid_op"
+
+            op = op.upper()
+            if op not in {"IN", "SHIP"}:
+                return False, None, "invalid_op"
+
+            current_qty = self.inventory.get(item_id, 0)
+            if op == "IN":
+                new_qty = current_qty + quantity
+            else:
+                new_qty = current_qty - quantity
+                if new_qty < 0:
+                    return False, None, "insufficient_inventory"
+
+            if apply:
+                self.inventory[item_id] = new_qty
+                logger.info(
+                    "Applied inventory op: item '%s' op '%s' qty %s -> %s",
+                    item_id,
+                    op,
+                    quantity,
+                    new_qty,
+                )
+
+            return True, new_qty, None
+
     def get_inventory(self) -> Dict[str, Any]:
         """Returns a copy of the current inventory."""
         with self._lock:
@@ -93,8 +137,8 @@ if __name__ == "__main__":
     logger.info(state)
 
     # Perform some inventory updates
-    state.update_inventory("item-A", 100)
-    state.update_inventory("item-B", 250)
+    state.apply_inventory_op("item:A", "IN", 100)
+    state.apply_inventory_op("item:B", "IN", 250)
     
     # Set a successor
     state.set_successor(('localhost', 9001))
@@ -105,5 +149,5 @@ if __name__ == "__main__":
     logger.info("Current Inventory: %s", current_inventory)
 
     assert state.is_leader()
-    assert current_inventory["item-A"] == 100
+    assert current_inventory["item:A"] == 100
     logger.info("NodeState basic operations are working correctly.")

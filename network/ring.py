@@ -209,6 +209,7 @@ class TCPRingClient(threading.Thread):
             logger.info("Topology optimization: Switching successor to Node %s at %s", 
                         target_node['node_id'], new_addr)
             self.node_state.set_successor(new_addr)
+            self._repair_triggered = True
             self._close_connection()
 
     def _discover_best_successor_node(self):
