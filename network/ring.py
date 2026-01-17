@@ -118,10 +118,19 @@ class TCPRingClient(threading.Thread):
         self._successor_conn: Optional[socket.socket] = None
         self._message_buffer = []
         self._buffer_lock = threading.Lock()
+        self._last_topology_check = 0
+        self._topology_check_interval = 10  # Seconds between topology re-evaluations
 
     def run(self):
         self.running = True
+        self._last_topology_check = time.time()
+
         while self.running:
+            # Periodic topology check to handle new node joins
+            if time.time() - self._last_topology_check > self._topology_check_interval:
+                self._check_topology()
+                self._last_topology_check = time.time()
+
             if not self._is_connected():
                 # Proactively try to find a successor if we don't have one (dynamic join/repair)
                 if not self.node_state.successor_addr:
@@ -184,40 +193,54 @@ class TCPRingClient(threading.Thread):
             
             time.sleep(self.config.heartbeat_interval)
 
-    def _repair_ring(self):
+    def _check_topology(self):
         """
-        Attempts to find a new successor using UDP discovery to repair the ring.
-        Follows the logic: successor is the node with the smallest ID > self.node_id,
-        or the node with the minimum ID if self is the maximum.
+        Periodically checks if a better successor has appeared (e.g., a new node joined).
+        If so, updates the state and closes the current connection to trigger a reconnect.
         """
-        logger.info("Initiating successor discovery (repair/join) for Node %s...", self.node_state.node_id)
+        target_node = self._discover_best_successor_node()
+        if not target_node:
+            return
+
+        host, port_str = target_node['tcp_addr'].split(':')
+        new_addr = (host, int(port_str))
+
+        if new_addr != self.node_state.successor_addr:
+            logger.info("Topology optimization: Switching successor to Node %s at %s", 
+                        target_node['node_id'], new_addr)
+            self.node_state.set_successor(new_addr)
+            self._close_connection()
+
+    def _discover_best_successor_node(self):
+        """Helper to discover nodes and calculate the ideal successor."""
         active_nodes = discover_nodes(self.config)
-        
-        # Filter out self
         others = [n for n in active_nodes if n['node_id'] != self.node_state.node_id]
         
         if not others:
+            return None
+
+        others.sort(key=lambda x: x['node_id'])
+        
+        for node in others:
+            if node['node_id'] > self.node_state.node_id:
+                return node
+        return others[0]
+
+    def _repair_ring(self):
+        """
+        Attempts to find a new successor using UDP discovery to repair the ring.
+        """
+        logger.info("Initiating successor discovery (repair/join) for Node %s...", self.node_state.node_id)
+        target_node = self._discover_best_successor_node()
+        
+        if not target_node:
             logger.info("No other nodes found. Node %s is isolated.", self.node_state.node_id)
             self.node_state.set_successor(None)
             return
-
-        # Sort by ID
-        others.sort(key=lambda x: x['node_id'])
-        
-        # Find the smallest ID > self.node_id
-        new_successor = None
-        for node in others:
-            if node['node_id'] > self.node_state.node_id:
-                new_successor = node
-                break
-        
-        # If not found, wrap around to the smallest ID
-        if not new_successor:
-            new_successor = others[0]
             
-        host, port_str = new_successor['tcp_addr'].split(':')
+        host, port_str = target_node['tcp_addr'].split(':')
         logger.info("Topology update: Node %s selected new successor Node %s at %s:%s", 
-                    self.node_state.node_id, new_successor['node_id'], host, port_str)
+                    self.node_state.node_id, target_node['node_id'], host, port_str)
         self.node_state.set_successor((host, int(port_str)))
 
     def send_message(self, msg: bytes):

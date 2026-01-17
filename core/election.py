@@ -26,12 +26,28 @@ class ElectionManager:
         self.node_state = node_state
         self.ring_client = ring_client
         self.is_participating = False # Flag to prevent multiple elections at once
+        self.current_term = 0
+        self.current_term_origin = 0
+
+    def _term_tuple(self, term: int, origin: int) -> tuple[int, int]:
+        return (term, origin)
+
+    def _is_stale_term(self, term: int, origin: int) -> bool:
+        return self._term_tuple(term, origin) < self._term_tuple(self.current_term, self.current_term_origin)
+
+    def _maybe_update_term(self, term: int, origin: int):
+        if self._term_tuple(term, origin) > self._term_tuple(self.current_term, self.current_term_origin):
+            self.current_term = term
+            self.current_term_origin = origin
+            self.is_participating = False
 
     def start_election(self):
         """
         Starts a new election. The node sends an election message with its
         own ID to its successor.
         """
+        self.current_term += 1
+        self.current_term_origin = self.node_state.node_id
         if not self.ring_client._is_connected():
             logger.warning("Cannot start election: Not connected to a successor.")
             # If a node is isolated, it can declare itself leader.
@@ -43,7 +59,11 @@ class ElectionManager:
 
         logger.info("Node %s is starting an election.", self.node_state.node_id)
         self.is_participating = True
-        election_payload = {"candidate_id": self.node_state.node_id}
+        election_payload = {
+            "candidate_id": self.node_state.node_id,
+            "term": self.current_term,
+            "term_origin": self.current_term_origin,
+        }
         election_msg = create_message(MSG_ELECTION, payload=election_payload)
         
         try:
@@ -62,10 +82,18 @@ class ElectionManager:
         """
         payload = msg.get("payload", {})
         candidate_id = payload.get("candidate_id")
+        term = payload.get("term", 0)
+        term_origin = payload.get("term_origin", 0)
 
         if candidate_id is None:
             logger.warning("Received invalid election message.")
             return
+
+        if self._is_stale_term(term, term_origin):
+            logger.info("Ignoring stale election message for term %s:%s.", term, term_origin)
+            return
+
+        self._maybe_update_term(term, term_origin)
 
         logger.info(
             "Node %s received election message with candidate %s.",
@@ -83,14 +111,28 @@ class ElectionManager:
             
             # Announce the winner to the rest of the ring
             logger.info("Node %s is announcing victory.", self.node_state.node_id)
-            updated_msg = create_message(MSG_COORDINATOR, payload={"leader_id": self.node_state.node_id})
+            updated_msg = create_message(
+                MSG_COORDINATOR,
+                payload={
+                    "leader_id": self.node_state.node_id,
+                    "term": self.current_term,
+                    "term_origin": self.current_term_origin,
+                },
+            )
 
         # Case 2: The incoming candidate ID is greater than this node's ID.
         # Forward the message unchanged.
         elif candidate_id > self.node_state.node_id:
             logger.info("Forwarding election message for higher candidate %s.", candidate_id)
             self.is_participating = True # This node is now part of the ongoing election
-            updated_msg = create_message(MSG_ELECTION, payload={"candidate_id": candidate_id})
+            updated_msg = create_message(
+                MSG_ELECTION,
+                payload={
+                    "candidate_id": candidate_id,
+                    "term": self.current_term,
+                    "term_origin": self.current_term_origin,
+                },
+            )
         
         # Case 3: The incoming candidate ID is less than this node's ID.
         # And this node is not already participating in an election with its own ID.
@@ -102,7 +144,14 @@ class ElectionManager:
                 self.node_state.node_id,
             )
             self.is_participating = True
-            updated_msg = create_message(MSG_ELECTION, payload={"candidate_id": self.node_state.node_id})
+            updated_msg = create_message(
+                MSG_ELECTION,
+                payload={
+                    "candidate_id": self.node_state.node_id,
+                    "term": self.current_term,
+                    "term_origin": self.current_term_origin,
+                },
+            )
         
         else:
             # This can happen if candidate_id < self.node_state.node_id but this node
@@ -129,10 +178,22 @@ class ElectionManager:
         """
         payload = msg.get("payload", {})
         leader_id = payload.get("leader_id")
+        term = payload.get("term", 0)
+        term_origin = payload.get("term_origin", 0)
+
+        if self._is_stale_term(term, term_origin):
+            logger.info("Ignoring stale coordinator for term %s:%s.", term, term_origin)
+            return
+
+        self._maybe_update_term(term, term_origin)
 
         if leader_id == self.node_state.node_id:
             # Message has traveled full circle
             logger.info("Coordinator message returned to leader. Election cycle complete.")
+            return
+
+        if leader_id == self.node_state.leader_id and self.current_term == term:
+            logger.info("Ignoring duplicate coordinator for term %s:%s.", term, term_origin)
             return
 
         logger.info("Node %s updating leader to %s.", self.node_state.node_id, leader_id)

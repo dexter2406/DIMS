@@ -14,8 +14,8 @@ logger = logging.getLogger(__name__)
 
 # Message types
 MSG_HEARTBEAT = "HEARTBEAT"
-MSG_ELECTION = "ELECTION"
-MSG_COORDINATOR = "COORDINATOR" # Payload: {"leader_id": int}
+MSG_ELECTION = "ELECTION"  # Payload: {"candidate_id": int, "term": int, "term_origin": int}
+MSG_COORDINATOR = "COORDINATOR"  # Payload: {"leader_id": int, "term": int, "term_origin": int}
 MSG_REPLICATION = "REPLICATION"
 MSG_UPDATE_ACK = "UPDATE_ACK" # Optional, for more reliable replication
 
