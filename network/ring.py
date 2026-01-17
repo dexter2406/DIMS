@@ -116,6 +116,8 @@ class TCPRingClient(threading.Thread):
         self.running = False
         self._repair_triggered = False
         self._successor_conn: Optional[socket.socket] = None
+        self._message_buffer = []
+        self._buffer_lock = threading.Lock()
 
     def run(self):
         self.running = True
@@ -135,9 +137,19 @@ class TCPRingClient(threading.Thread):
                             successor_addr, timeout=self.config.connection_timeout
                         )
                         logger.info("Successfully connected to successor at %s", successor_addr)
+                        
+                        # Flush buffered messages
+                        with self._buffer_lock:
+                            if self._message_buffer:
+                                logger.info("Flushing %d buffered messages.", len(self._message_buffer))
+                                for msg in self._message_buffer:
+                                    length_prefix = struct.pack('>I', len(msg))
+                                    self._successor_conn.sendall(length_prefix + msg)
+                                self._message_buffer.clear()
+
                         # Only trigger election if this connection is the result of a repair/failure
                         if self._repair_triggered and self.on_failure:
-                            logger.info("Triggering election after successful ring repair.")
+                            logger.info("Triggering election after ring topology change/establishment.")
                             self.on_failure()
                             self._repair_triggered = False
                     except Exception as e:
@@ -178,7 +190,7 @@ class TCPRingClient(threading.Thread):
         Follows the logic: successor is the node with the smallest ID > self.node_id,
         or the node with the minimum ID if self is the maximum.
         """
-        logger.info("Initiating ring repair for Node %s...", self.node_state.node_id)
+        logger.info("Initiating successor discovery (repair/join) for Node %s...", self.node_state.node_id)
         active_nodes = discover_nodes(self.config)
         
         # Filter out self
@@ -204,17 +216,25 @@ class TCPRingClient(threading.Thread):
             new_successor = others[0]
             
         host, port_str = new_successor['tcp_addr'].split(':')
-        logger.info("Ring repair: Node %s selected new successor Node %s at %s:%s", 
+        logger.info("Topology update: Node %s selected new successor Node %s at %s:%s", 
                     self.node_state.node_id, new_successor['node_id'], host, port_str)
         self.node_state.set_successor((host, int(port_str)))
 
     def send_message(self, msg: bytes):
-        if not self._is_connected():
-            raise ConnectionError("Not connected to a successor.")
-        
-        # Prefix the message with its 4-byte length (big-endian)
-        length_prefix = struct.pack('>I', len(msg))
-        self._successor_conn.sendall(length_prefix + msg)
+        with self._buffer_lock:
+            if self._is_connected():
+                try:
+                    # Prefix the message with its 4-byte length (big-endian)
+                    length_prefix = struct.pack('>I', len(msg))
+                    self._successor_conn.sendall(length_prefix + msg)
+                    return
+                except Exception as e:
+                    logger.warning("Failed to send message, buffering and reconnecting: %s", e)
+                    self._close_connection()
+                    # Fall through to buffer append
+            
+            logger.info("Buffering message (queue size: %d)", len(self._message_buffer) + 1)
+            self._message_buffer.append(msg)
 
     def _is_connected(self) -> bool:
         return self._successor_conn is not None
