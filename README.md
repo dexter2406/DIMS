@@ -93,6 +93,24 @@ python -m client.scanner_simulator --op SHIP --type sku --start-no 1000 --num 5
 
 The simulator logs updates and automatically handles leader changes if a leader node fails and a new one is elected.
 
+### Multi-Machine (LAN) Setup
+
+- Bind and advertise a reachable LAN IP. Use `--host <LAN_IP>` (or `DIMS_HTTP_HOST`/`DIMS_TCP_HOST`); otherwise discovery replies may advertise an unexpected address.
+
+```bash
+python -m server.main --node-id 1 --host 192.168.178.88 --http-port 8001 --tcp-port 9001
+```
+
+- UDP broadcast must be reachable. Discovery uses UDP broadcast (default `<broadcast>`). Some subnets require explicitly setting `DIMS_UDP_BROADCAST_ADDR` (for example `192.168.178.255`).
+
+```text
+ipconfig
+broadcast = IP OR (~mask)
+Example /24 (255.255.255.0): 192.168.178.87 -> 192.168.178.255
+```
+
+- Firewall ports: allow UDP 10000, HTTP 800x, TCP ring 900x.
+
 ### Ports and Discovery
 
 - HTTP: per-node `--http-port` (default 8000).
