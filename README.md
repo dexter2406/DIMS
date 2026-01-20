@@ -147,10 +147,10 @@ The simulator logs updates and automatically handles leader changes if a leader 
 2.  **Milestone 2: Reliable Replication & State Consistency**
 
     Replication forwarding across the ring, follower WAL persistence, and inventory delta application.
-3.  **Milestone 3: Resilient Ring Management & Election Stability (Done)**
+3.  **Milestone 3: Resilient Ring Management & Election Stability**
 
     Election propagation, coordinator handling, and ring repair behavior on link failure.
-4.  **Milestone 4: Comprehensive Scenario-based Testing (In Progress)**
+4.  **Milestone 4: Comprehensive Scenario-based Testing**
 
     - Leader crash -> repair -> election convergence -> client rediscovery.
     - Replication continuity after repair (no lost updates).
