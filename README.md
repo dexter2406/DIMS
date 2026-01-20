@@ -136,26 +136,22 @@ The simulator logs updates and automatically handles leader changes if a leader 
 - `GET /status`: Returns node role and inventory summary (`inventory_size`, `total_units`).
 - `GET /inventory`: Returns all items.
 - `GET /inventory?by_type=1`: Aggregates by `type` if the `item_id` contains `type:subtype`; otherwise groups by full `item_id`.
+  
+---
 
-## Progress & Milestones
+## Milestones (Roadmap to Completion)
 
-### Current Status
-- Completed: UDP leader/node discovery, TCP ring repair, coordinator-based election propagation, WAL recovery, file-based logging.
-- In progress: scenario verification for crash -> repair -> election -> client rediscovery, replication continuity after repair.
-- Planned: multi-node stress checks and broader failure simulations.
+1.  **Milestone 1: Robust Networking & Discovery**
 
-### Immediate Next Step (1-2 Days)
-- **Scenario Verification**: Validate leader crash -> ring repair -> election convergence -> client rediscovery -> confirm replication resumes after repair -> 2 physical machine expeirments.
-
-### Weekly Milestones (Roadmap to Completion)
-
-1.  **Milestone 1: Robust Networking & Discovery (Done)**
     TCP message framing, dynamic IP resolution for discovery, and basic fault detection wiring.
-2.  **Milestone 2: Reliable Replication & State Consistency (Done)**
+2.  **Milestone 2: Reliable Replication & State Consistency**
+
     Replication forwarding across the ring, follower WAL persistence, and inventory delta application.
 3.  **Milestone 3: Resilient Ring Management & Election Stability (Done)**
+
     Election propagation, coordinator handling, and ring repair behavior on link failure.
 4.  **Milestone 4: Comprehensive Scenario-based Testing (In Progress)**
+
     - Leader crash -> repair -> election convergence -> client rediscovery.
     - Replication continuity after repair (no lost updates).
     - Rapid node churn with UDP discovery and ring closure.
