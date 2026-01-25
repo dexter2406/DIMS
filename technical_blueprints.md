@@ -7,23 +7,21 @@ Original proposal: Proposal_Gruppe3_v3.pdf
 
 Overall system: **Scanner Clients -> (HTTP REST) -> Leader Server -> (internal TCP ring) -> Followers**; **UDP broadcast is used for dynamic discovery of the Leader HTTP endpoint and node discovery during ring repair**.
 
-### A. Directories/Modules (as per `DS_Project_Modules.xlsx / Modules`)
+### A. Directories/Modules
 
 **common/**
 
 * `protocol.py`: **internal message types, JSON format, field conventions** (shared "language" across modules).
-* `utils.py`: shared utilities (serialization, timestamps, retry/timeout helpers, etc).
-  (Owner: Fang)
+* `logging_utils.py`: logging configuration and log file path helpers.
 
 **server/**
 
 * `main.py`: **system entry point**; initialize Node; start TCP/UDP/HTTP threads/loops; unified lifecycle management.
 * `config.py`: configuration loading (ports, Node ID, etc).
-* `logger.py`: log writing.
 
 **api/**
 
-* `http_server.py`: external HTTP REST (Scanner submits update POST).
+* `http_server.py`: external HTTP JSON API (Scanner submits update POST; clients can query status/inventory).
 
   * If this node is Leader: receive update -> append WAL -> update in-memory state -> trigger replication
   * If this node is Follower: reject/redirect/return 503 + instruct client to re-run UDP discover (choose one, but be consistent)
@@ -36,6 +34,7 @@ Overall system: **Scanner Clients -> (HTTP REST) -> Leader Server -> (internal T
 **core/**
 
 * `state.py`: in-memory KV inventory + node role/runtime status (leader/follower, node_id, successor, etc).
+  * Inventory updates apply IN/SHIP deltas via `apply_inventory_op`.
 * `replication.py`: **Passive Replication**: Leader propagates updates to followers via internal TCP ring; followers apply updates to state (and may optionally write WAL).
 * `election.py`: **Ring-based election (highest Node ID)**; triggered by TCP disconnect/heartbeat timeout.
 
@@ -46,7 +45,8 @@ Overall system: **Scanner Clients -> (HTTP REST) -> Leader Server -> (internal T
 
 **client/**
 
-* `scanner_client.py`: simulated Scanner: UDP discover leader -> loop sending updates via HTTP POST.
+* `scanner_client.py`: client helper: UDP discover leader -> send HTTP POST updates; no built-in simulation loop.
+* `scanner_simulator.py`: CLI simulation runner for deterministic IN/SHIP sequences.
 
 ---
 
@@ -132,51 +132,3 @@ To avoid scope creep, the following are explicitly out of scope (requests during
 5. **No security/auth/encryption** (TLS, tokens, ACLs, etc)
 6. **No complex ops** (monitoring, metrics, auto deployment, failure injection frameworks, etc)
 7. **No complex client ecosystem** (keep only the simulated scanner_client)
-
----
-
-## 6) Excel Reuse Note (avoid duplicate content)
-
-* **Module breakdown and owners**: use `DS_Project_Modules.xlsx / Modules` as the current frozen version; any future "add/remove files or shift responsibilities" must update that table to avoid verbal divergence.
-
----
-## Directory Structure Design
-.
-|-- common/
-|   |-- protocol.py        # Internal message protocol definitions (JSON schema / message types)
-|   |-- utils.py           # Shared utility functions (serialization, timestamps, retries, etc)
-|   # Owner: Fang
-|
-|-- server/
-|   |-- main.py            # System entry point; starts TCP / UDP / HTTP threads
-|   |-- config.py          # Configuration loading (ports, Node ID, etc)
-|   |-- logger.py          # Logging system
-|   # Owners: Fang (main), Davud (config, logger)
-|
-|-- api/
-|   |-- http_server.py     # External HTTP REST interface (Scanner -> System)
-|                          # - Leader: receive updates, write WAL, trigger replication
-|                          # - Follower: reject / redirect / 503
-|   # Owner: Mohamed
-|
-|-- storage/
-|   |-- wal.py             # Write-Ahead Log (append-only JSON)
-|   |-- recovery.py        # Replay WAL on startup; recover node and rejoin
-|   # Owner: Mohamed
-|
-|-- core/
-|   |-- state.py           # In-memory inventory state + node runtime state
-|   |-- replication.py     # Passive replication (Leader -> Followers via ring)
-|   |-- election.py        # Ring-based election (highest Node ID)
-|   # Owner: Fang (election, replication), Mohamed (state)
-|
-|-- network/
-|   |-- ring.py            # TCP ring management (successor, heartbeat, repair)
-|   |-- udp_discovery.py   # UDP broadcast: discover Leader HTTP endpoint and active nodes
-|   # Owner: Fang (ring), Davud (udp_discovery)
-|
-|-- client/
-|   |-- scanner_client.py  # Simulated Scanner client (UDP discover + HTTP POST)
-|   # Owner: Davud
-|
-|-- README.md              # Project overview, startup, demo guide
