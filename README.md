@@ -90,16 +90,16 @@ You can add more nodes the same way (unique node IDs and ports).
 
 ### 3. Run the Scanner Simulator
 
-The simulator will discover the leader via UDP broadcast and send deterministic IN/SHIP updates. Open a third terminal:
+The simulator will discover the leader via UDP broadcast and send deterministic IN/OUT updates. Open a third terminal:
 
 ```bash
-python -m client.scanner_simulator --op IN --type sku --start-no 1000 --num 5
+python -m client.scanner_simulator --op IN --item-id-start item1000 --id-range 3 --count 1
 ```
 
-To ship items, use:
+To take items out, use:
 
 ```bash
-python -m client.scanner_simulator --op SHIP --type sku --start-no 1000 --num 5
+python -m client.scanner_simulator --op OUT --item-id-start item1000 --id-range 3 --count 1
 ```
 
 The simulator logs updates and automatically handles leader changes if a leader node fails and a new one is elected.
@@ -127,7 +127,7 @@ See [test_cases.md](test_cases.md).
 - **Leader Discovery**: Clients use UDP broadcast to find the leader's HTTP endpoint.
 - **Node Discovery for Ring Repair**: Nodes use UDP broadcast to find peers when repairing or joining the ring.
 - **Ring-based Communication**: Nodes are organized in a logical ring and communicate over TCP. Each node only knows about its direct successor.
-- **Inventory Updates**: Clients send IN/SHIP operations with a `quantity` delta; the leader persists to WAL, applies the delta, and replicates the same op to followers.
+- **Inventory Updates**: Clients send IN/OUT operations with a `quantity` delta; the leader persists to WAL, applies the delta, and replicates the same op to followers.
 - **Replication**: The leader propagates updates around the ring. Followers apply the op, persist to their WAL, and forward the message.
 - **Leader Election**: If a node detects a failure (e.g., successor unreachable), a ring-based election is triggered. The node with the highest ID wins and announces the leader via a coordinator message.
 - **Crash Recovery**: When a node restarts, it replays its WAL to recover its state before rejoining the ring as a follower.
@@ -135,8 +135,8 @@ See [test_cases.md](test_cases.md).
 ## HTTP API (REST-style)
 
 - `POST /update`: Accepts inventory deltas.
-  - Body: `{"item_id":"sku1000","op":"IN|SHIP","quantity":1}`
-  - Returns 202 on success, 409 if insufficient inventory for SHIP.
+  - Body: `{"item_id":"item1000","op":"IN|OUT","quantity":1}`
+  - Returns 202 on success, 409 if insufficient inventory for OUT.
 - `GET /status`: Returns node role and inventory summary (`inventory_size`, `total_units`).
 - `GET /inventory`: Returns all items.
 - `GET /inventory?by_type=1`: Aggregates by `type` if the `item_id` contains `type:subtype`; otherwise groups by full `item_id`.

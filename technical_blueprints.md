@@ -34,7 +34,7 @@ Overall system: **Scanner Clients -> (HTTP REST) -> Leader Server -> (internal T
 **core/**
 
 * `state.py`: in-memory KV inventory + node role/runtime status (leader/follower, node_id, successor, etc).
-  * Inventory updates apply IN/SHIP deltas via `apply_inventory_op`.
+  * Inventory updates apply IN/OUT deltas via `apply_inventory_op`.
 * `replication.py`: **Passive Replication**: Leader propagates updates to followers via internal TCP ring; followers apply updates to state (and may optionally write WAL).
 * `election.py`: **Ring-based election (highest Node ID)**; triggered by TCP disconnect/heartbeat timeout.
 
@@ -46,7 +46,7 @@ Overall system: **Scanner Clients -> (HTTP REST) -> Leader Server -> (internal T
 **client/**
 
 * `scanner_client.py`: client helper: UDP discover leader -> send HTTP POST updates; no built-in simulation loop.
-* `scanner_simulator.py`: CLI simulation runner for deterministic IN/SHIP sequences.
+* `scanner_simulator.py`: CLI simulation runner for deterministic IN/OUT sequences.
 
 ---
 

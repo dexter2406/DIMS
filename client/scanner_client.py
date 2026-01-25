@@ -53,7 +53,7 @@ class ScannerClient:
 
         Args:
             item_id (str): The ID of the item to update.
-            op (str): Inventory operation (IN or SHIP).
+            op (str): Inventory operation (IN or OUT).
             quantity (int): The quantity delta for the item.
 
         Returns:

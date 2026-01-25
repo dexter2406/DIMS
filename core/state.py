@@ -71,7 +71,7 @@ class NodeState:
         apply: bool = True,
     ) -> Tuple[bool, Optional[int], Optional[str]]:
         """
-        Applies an inventory operation (IN/SHIP) and returns the new quantity.
+        Applies an inventory operation (IN/OUT) and returns the new quantity.
 
         Returns:
             (ok, new_quantity, error_code)
@@ -84,7 +84,7 @@ class NodeState:
                 return False, None, "invalid_op"
 
             op = op.upper()
-            if op not in {"IN", "SHIP"}:
+            if op not in {"IN", "OUT"}:
                 return False, None, "invalid_op"
 
             current_qty = self.inventory.get(item_id, 0)

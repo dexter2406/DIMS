@@ -45,7 +45,7 @@ class RecoveryManager:
             try:
                 # This logic must be kept in sync with how operations are logged
                 op_type = record.get("op")
-                if op_type in {"IN", "SHIP"}:
+                if op_type in {"IN", "OUT"}:
                     item_id = record.get("item_id")
                     quantity = record.get("quantity")
                     if item_id is not None and quantity is not None:

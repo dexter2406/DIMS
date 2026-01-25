@@ -177,11 +177,11 @@ class Node:
                 return False, 400, {"error": "Invalid item_id. Expected non-empty string."}
 
             if not isinstance(op, str):
-                return False, 400, {"error": "Invalid op. Expected IN or SHIP."}
+                return False, 400, {"error": "Invalid op. Expected IN or OUT."}
 
             op = op.upper()
-            if op not in {"IN", "SHIP"}:
-                return False, 400, {"error": "Invalid op. Expected IN or SHIP."}
+            if op not in {"IN", "OUT"}:
+                return False, 400, {"error": "Invalid op. Expected IN or OUT."}
 
             if not isinstance(quantity, int) or quantity <= 0:
                 return False, 400, {"error": "Invalid quantity. Expected positive integer."}
