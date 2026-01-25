@@ -23,7 +23,6 @@ python -m server.main --node-id 2 --http-port 8002 --tcp-port 9002 # --host
 """ 
 Run Client (simulator)
 python -m client.scanner_simulator --op IN --type <item_name> --start-no <item_no> --num 5
-- IP is checked by `ipconfig` in Windows CMD
 """
 python -m client.scanner_simulator --op IN --type sku --start-no 1000 --num 5
 
