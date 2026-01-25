@@ -41,7 +41,7 @@ def _parse_args():
     parser.add_argument(
         "--interval",
         type=float,
-        default=0.0,
+        default=3,
         help="Seconds to wait between requests",
     )
     parser.add_argument(
