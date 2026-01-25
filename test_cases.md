@@ -10,7 +10,24 @@
     - The first node starts in solo mode and becomes the Leader.
     - Other nodes discover the cluster via UDP and join the ring; each join checks node IDs and may trigger an election if the ID is higher.
     - Clients on both machines automatically discover the Leader’s HTTP address via UDP.
+```python
+$env:DIMS_UDP_BROADCAST_ADDR="172.20.10.15" # only setup for 2 machines
+""" 
+Run Server N
+python -m server.main --node-id <N> --host <IP> --http-port 800<N>  --tcp-port 900<N>
+- IP is checked by `ipconfig` in Windows Cmd
+"""
+python -m server.main --node-id 1 --http-port 8001 --tcp-port 9001 # --host 172.20.10.15 if not local
+python -m server.main --node-id 2 --http-port 8002 --tcp-port 9002 # --host
 
+""" 
+Run Client (simulator)
+python -m client.scanner_simulator --op IN --type <item_name> --start-no <item_no> --num 5
+- IP is checked by `ipconfig` in Windows CMD
+"""
+python -m client.scanner_simulator --op IN --type sku --start-no 1000 --num 5
+
+```
 
 ### Normal Case – Case 2 (Concurrent Clients + Replication)
 
@@ -32,7 +49,12 @@
 - **Result:**
     - Remaining nodes detect the failure, trigger an election, and elect a new Leader.
     - Clients keep sending requests; after failures, they rediscover the new Leader and continue updating.
-
+```python
+"""
+Set Client to run a long time by `--num 1000`, testing re-discorvery of the new leader
+"""
+python -m client.scanner_simulator --op IN --type sku --start-no 1000 --num 1000
+```
 
 ### Failure Case – Case 4 (Ring Break and Repair)
 
@@ -56,7 +78,7 @@
     - It rejoins the ring as a follower and continues receiving subsequent updates.
 
 
-### Failure Case – Case 6 (Follower Restart, Non-Leader)
+### Failure Case – Case 6 (Follower Restart)
 
 - **Action:**
     
