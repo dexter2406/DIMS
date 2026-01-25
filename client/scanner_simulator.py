@@ -22,6 +22,7 @@ logger = logging.getLogger(__name__)
 
 
 def _parse_args():
+    """Parse CLI arguments for the scanner simulator."""
     parser = argparse.ArgumentParser(description="DIMS Scanner Client Simulator")
     parser.add_argument(
         "--op",
@@ -54,11 +55,13 @@ def _parse_args():
 
 
 def _iter_item_ids(item_type: str, start_no: int, num: int):
+    """Yield item IDs built from type prefix and numeric range."""
     for offset in range(num):
         yield f"{item_type}{start_no + offset}"
 
 
 def _send_sequence(client: ScannerClient, op: str, item_type: str, start_no: int, num: int, quantity: int, interval: float):
+    """Send a sequence of updates, handling retries and stop conditions."""
     for item_id in _iter_item_ids(item_type, start_no, num):
         accepted, status_code = client.send_update(item_id, op, quantity)
         time.sleep(1)  # Small delay to avoid overwhelming logs
@@ -90,6 +93,7 @@ def _send_sequence(client: ScannerClient, op: str, item_type: str, start_no: int
 
 
 def main():
+    """Run the simulator with parsed arguments and exit code."""
     args = _parse_args()
 
     if args.num <= 0:

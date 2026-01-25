@@ -34,6 +34,7 @@ class DiscoveryListener(threading.Thread):
     if the current node is the leader.
     """
     def __init__(self, node_state: NodeState, config):
+        """Initialize the UDP listener with node state and config."""
         super().__init__(daemon=True)
         self.node_state = node_state
         self.config = config
@@ -42,6 +43,7 @@ class DiscoveryListener(threading.Thread):
         self.running = False
 
     def run(self):
+        """Listen for UDP requests and respond to discovery queries."""
         self.sock.bind(('', self.config.udp_discovery_port))
         logger.info("UDP Discovery Listener started on port %s", self.config.udp_discovery_port)
         self.running = True
@@ -75,6 +77,7 @@ class DiscoveryListener(threading.Thread):
                     logger.error("Error in DiscoveryListener: %s", e)
 
     def stop(self):
+        """Stop the listener and close the UDP socket."""
         self.running = False
         self.sock.close()
         logger.info("UDP Discovery Listener stopped.")

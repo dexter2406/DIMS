@@ -23,6 +23,7 @@ class NodeState:
     role and position in the distributed system.
     """
     def __init__(self, node_id: int):
+        """Initialize node identity, role, and inventory state."""
         self._lock = threading.Lock()
 
         # --- Node's identity and role ---
@@ -97,10 +98,10 @@ class NodeState:
             if apply:
                 self.inventory[item_id] = new_qty
                 logger.info(
-                    "Applied inventory op: item '%s' op '%s' qty %s -> %s",
+                    "Applied inventory op: item '%s' op '%s' %s -> %s",
                     item_id,
                     op,
-                    quantity,
+                    current_qty,
                     new_qty,
                 )
 

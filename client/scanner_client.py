@@ -26,6 +26,7 @@ class ScannerClient:
     A client that simulates a barcode scanner updating the inventory.
     """
     def __init__(self, config: AppConfig):
+        """Initialize the client with config and no known leader."""
         self.config = config
         self.leader_http_addr: Optional[str] = None
 

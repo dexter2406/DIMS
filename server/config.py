@@ -18,6 +18,7 @@ class AppConfig:
     It holds all configurable parameters like Node ID, ports, etc.
     """
     def __init__(self):
+        """Load defaults and environment-driven configuration values."""
         # Unique identifier for this node, crucial for elections
         self.node_id: int = int(os.getenv('DIMS_NODE_ID', 1))
 

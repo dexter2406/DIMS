@@ -37,6 +37,7 @@ class TCPRingServer(threading.Thread):
     Once connected, it receives messages and passes them to a handler.
     """
     def __init__(self, config: AppConfig, message_handler: MessageHandler):
+        """Initialize the TCP ring server with config and handler."""
         super().__init__(daemon=True)
         self.config = config
         self.message_handler = message_handler
@@ -44,6 +45,7 @@ class TCPRingServer(threading.Thread):
         self._predecessor_conn: Optional[socket.socket] = None
 
     def run(self):
+        """Accept predecessor connections and dispatch messages."""
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             s.bind((self.config.tcp_host, self.config.tcp_port))
@@ -82,6 +84,7 @@ class TCPRingServer(threading.Thread):
                     logger.info("Waiting for new predecessor connection...")
 
     def stop(self):
+        """Stop the server and unblock any pending accept."""
         self.running = False
         # To unblock the accept() call
         try:
@@ -108,11 +111,17 @@ class TCPRingClient(threading.Thread):
     Manages the outgoing TCP connection to the successor node.
     Sends heartbeats and other messages. Handles connection failures.
     """
-    def __init__(self, node_state: NodeState, config: AppConfig, on_failure: Optional[Callable[[], None]] = None):
+    def __init__(
+        self,
+        node_state: NodeState,
+        config: AppConfig,
+        on_election_needed: Optional[Callable[[], None]] = None,
+    ):
+        """Initialize the ring client state and connection tracking."""
         super().__init__(daemon=True)
         self.node_state = node_state
         self.config = config
-        self.on_failure = on_failure
+        self.on_election_needed = on_election_needed
         self.running = False
         self._repair_triggered = False
         self._successor_conn: Optional[socket.socket] = None
@@ -122,6 +131,7 @@ class TCPRingClient(threading.Thread):
         self._topology_check_interval = 10  # Seconds between topology re-evaluations
 
     def run(self):
+        """Maintain successor connection, heartbeats, and repairs."""
         self.running = True
         self._last_topology_check = time.time()
 
@@ -135,8 +145,8 @@ class TCPRingClient(threading.Thread):
                 # Proactively try to find a successor if we don't have one (dynamic join/repair)
                 if not self.node_state.successor_addr:
                     self._repair_ring()
-                    if self.node_state.successor_addr:
-                        self._repair_triggered = True
+                    if self.node_state.successor_addr:  
+                        self._repair_triggered = True   # Mark successor connection now repaired
 
                 successor_addr = self.node_state.successor_addr
                 if successor_addr:
@@ -157,9 +167,9 @@ class TCPRingClient(threading.Thread):
                                 self._message_buffer.clear()
 
                         # Only trigger election if this connection is the result of a repair/failure
-                        if self._repair_triggered and self.on_failure:
+                        if self._repair_triggered and self.on_election_needed:
                             logger.info("Triggering election after ring topology change/establishment.")
-                            self.on_failure()
+                            self.on_election_needed()
                             self._repair_triggered = False
                     except Exception as e:
                         logger.warning("Failed to connect to successor %s: %s", successor_addr, e)
@@ -171,8 +181,8 @@ class TCPRingClient(threading.Thread):
                             self._repair_triggered = True
                         else:
                             # If isolated, trigger election immediately (self-elect)
-                            if self.on_failure:
-                                self.on_failure()
+                            if self.on_election_needed:
+                                self.on_election_needed()
                             self._repair_triggered = False
 
                         time.sleep(self.config.heartbeat_interval)
@@ -187,8 +197,8 @@ class TCPRingClient(threading.Thread):
                     self._close_connection()
                     self._repair_ring() # Fix: Ensure ring is repaired on heartbeat failure
                     self._repair_triggered = True
-                    if self.node_state.successor_addr is None and self.on_failure:
-                        self.on_failure()
+                    if self.node_state.successor_addr is None and self.on_election_needed:
+                        self.on_election_needed()
                         self._repair_triggered = False
             
             time.sleep(self.config.heartbeat_interval)
@@ -213,7 +223,12 @@ class TCPRingClient(threading.Thread):
             self._close_connection()
 
     def _discover_best_successor_node(self):
-        """Helper to discover nodes and calculate the ideal successor."""
+        """
+        Helper to discover nodes and calculate the ideal successor.
+        Finds the node with:
+        - the first ID greater than self
+        - or the smallest ID overall to "circle back".
+        """
         active_nodes = discover_nodes(self.config)
         others = [n for n in active_nodes if n['node_id'] != self.node_state.node_id]
         
@@ -245,6 +260,7 @@ class TCPRingClient(threading.Thread):
         self.node_state.set_successor((host, int(port_str)))
 
     def send_message(self, msg: bytes):
+        """Send a message to the successor or buffer if disconnected."""
         with self._buffer_lock:
             if self._is_connected():
                 try:
@@ -261,15 +277,18 @@ class TCPRingClient(threading.Thread):
             self._message_buffer.append(msg)
 
     def _is_connected(self) -> bool:
+        """Return True if a successor connection is present."""
         return self._successor_conn is not None
 
     def _close_connection(self):
+        """Close the current successor connection if open."""
         if self._successor_conn:
             self._successor_conn.close()
             self._successor_conn = None
         logger.info("Successor connection closed.")
 
     def stop(self):
+        """Stop the client thread and close connections."""
         self.running = False
         self._close_connection()
         logger.info("TCP Ring Client stopped.")
@@ -286,6 +305,7 @@ if __name__ == '__main__':
     succ_config.tcp_port = 9001
     
     def handle_msg(data):
+        """Log demo messages received by the successor."""
         logger.info("Successor received: %s", data.decode())
 
     server = TCPRingServer(succ_config, handle_msg)

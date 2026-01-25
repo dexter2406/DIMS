@@ -33,8 +33,10 @@ def retry(times: int, delay: float, exceptions: tuple = (Exception,)):
         exceptions (tuple): A tuple of exception classes to catch and retry on.
     """
     def decorator(func):
+        """Wrap a function with retry behavior."""
         @wraps(func)
         def wrapper(*args, **kwargs):
+            """Retry the wrapped function on configured exceptions."""
             attempt = 0
             while attempt < times:
                 try:
@@ -53,6 +55,7 @@ if __name__ == "__main__":
     
     @retry(times=3, delay=1, exceptions=(ValueError,)) # High chance of failure
     def might_fail(fail_chance: float):
+        """Randomly raise a ValueError to demo retry behavior."""
         import random
         if random.random() < fail_chance:
             raise ValueError("Simulated failure")

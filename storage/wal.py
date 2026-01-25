@@ -21,6 +21,7 @@ class WriteAheadLog:
     The log is stored as a sequence of JSON objects, one per line.
     """
     def __init__(self, wal_path: str):
+        """Initialize the WAL file and ensure its directory exists."""
         self._lock = threading.Lock()
         self.wal_path = wal_path
         

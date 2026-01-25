@@ -29,6 +29,7 @@ log = logging.getLogger(__name__)
 
 
 def _peek_node_id_from_args(default_id: int) -> int:
+    """Extract node ID from argv without full argument parsing."""
     for index, arg in enumerate(sys.argv):
         if arg.startswith("--node-id="):
             value = arg.split("=", 1)[1]
@@ -44,6 +45,7 @@ def _peek_node_id_from_args(default_id: int) -> int:
     return default_id
 
 def _valid_item_id(item_id: str) -> bool:
+    """Return True if item_id is a non-empty string."""
     if not isinstance(item_id, str):
         return False
     return bool(item_id.strip())
@@ -53,6 +55,7 @@ class Node:
     Represents a single node in the DIMS cluster, encapsulating all its components.
     """
     def __init__(self, config):
+        """Initialize node state, storage, networking, and handlers."""
         self.config = config
         self.running = True
         
@@ -67,8 +70,7 @@ class Node:
         # After recovery, every node starts as a follower
         self.state.set_role(ROLE_FOLLOWER)
         
-        # 3. Initialize networking components
-        # TCP client needs the initial successor address from config
+        # 3. Initialize networking components if assigned
         if config.successor_addr:
             host, port = config.successor_addr.split(':')
             self.state.set_successor((host, int(port)))
@@ -77,8 +79,8 @@ class Node:
         self.replication_manager = ReplicationManager(self.state, self.ring_client, self.wal)
         self.election_manager = ElectionManager(self.state, self.ring_client)
         
-        # Wire the failure callback to trigger an election if the successor connection drops
-        self.ring_client.on_failure = self.election_manager.start_election
+        # Wire the election callback to trigger when the ring needs a new leader
+        self.ring_client.on_election_needed = self.election_manager.start_election
         
         # The TCP server receives messages and dispatches them via handle_tcp_message
         self.ring_server = TCPRingServer(config, self.handle_tcp_message)
@@ -233,7 +235,8 @@ def main():
     node = Node(config)
     
     def signal_handler(sig, frame):
-        log.info("Caught signal, shutting down gracefully...")
+        """Handle process signals by shutting down the node."""
+        log.info("Caught signal %s, shutting down gracefully...", sig)
         node.stop()
     
     signal.signal(signal.SIGINT, signal_handler)

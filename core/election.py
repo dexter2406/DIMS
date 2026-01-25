@@ -1,9 +1,15 @@
 # core/election.py
 
 """
-Implements the leader election algorithm. This is a ring-based algorithm
-where the node with the highest ID is elected as the leader.
-An election is triggered by events like startup or connection failure.
+Implements a ring-based leader election using the LeLann-Chang-Roberts (LCR) algorithm.
+The node swallow the smaller node id and pass on the higher id. The node with the highest ID wins. 
+
+Notes on implementation details / adaptations:
+- Elections are triggered on topology changes (e.g., disconnect/repair), not only startup.
+- Messages carry a term (term + origin) to suppress stale/duplicate elections.
+- `MSG_ELECTION` carries candidate_id and term; `MSG_COORDINATOR` announces the winner.
+- `is_participating` prevents starting/forwarding multiple concurrent elections for this same node.
+- Each node forwards higher candidates and discards lower candidates while participating.
 """
 
 # Add project root to path to allow absolute imports
@@ -23,6 +29,7 @@ class ElectionManager:
     Manages the leader election process for a node.
     """
     def __init__(self, node_state: NodeState, ring_client: TCPRingClient):
+        """Initialize election state and dependencies."""
         self.node_state = node_state
         self.ring_client = ring_client
         self.is_participating = False # Flag to prevent multiple elections at once
@@ -30,12 +37,15 @@ class ElectionManager:
         self.current_term_origin = 0
 
     def _term_tuple(self, term: int, origin: int) -> tuple[int, int]:
+        """Build a comparable term tuple."""
         return (term, origin)
 
     def _is_stale_term(self, term: int, origin: int) -> bool:
+        """Check whether a term is older than the current term."""
         return self._term_tuple(term, origin) < self._term_tuple(self.current_term, self.current_term_origin)
 
     def _maybe_update_term(self, term: int, origin: int):
+        """Update the term if newer and reset participation."""
         if self._term_tuple(term, origin) > self._term_tuple(self.current_term, self.current_term_origin):
             self.current_term = term
             self.current_term_origin = origin
@@ -211,9 +221,6 @@ class ElectionManager:
 if __name__ == '__main__':
     # Election logic is highly dependent on the ring state and is best tested
     # through integration.
-    logger.info("ElectionManager logic is defined.")
-    logger.info("Correctness depends on a functioning TCP ring and message passing.")
-    
     # A conceptual test flow:
     # - Node A, B, C with IDs 10, 20, 30.
     # - Ring is A -> B -> C -> A.
@@ -224,5 +231,4 @@ if __name__ == '__main__':
     # - A receives ELECTION(30). Since 30 > 10, A forwards ELECTION(30) to B.
     # - B receives ELECTION(30). Since 30 > 20, B forwards ELECTION(30) to C.
     # - C receives ELECTION(30). It's its own ID. C declares itself leader.
-    
-    logger.info("Conceptual test plan created.")
+    pass

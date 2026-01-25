@@ -10,7 +10,7 @@ import threading
 import logging
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from typing import Callable, Tuple
-from urllib.parse import urlparse, parse_qs
+from urllib.parse import urlparse
 
 # Add project root to path to allow absolute imports
 import sys
@@ -32,6 +32,7 @@ class APRequestHandler(BaseHTTPRequestHandler):
     """
     
     def _send_response(self, status_code: int, body: dict):
+        """Send a JSON response with status code and body."""
         self.send_response(status_code)
         self.send_header('Content-type', 'application/json')
         self.send_header('Connection', 'close')
@@ -56,20 +57,7 @@ class APRequestHandler(BaseHTTPRequestHandler):
         elif parsed_url.path == '/inventory':
             node_state: NodeState = self.server.node_state
             inventory = node_state.get_inventory()
-            params = parse_qs(parsed_url.query)
-            by_type_raw = params.get("by_type", ["0"])[0]
-            by_type = str(by_type_raw).lower() in {"1", "true", "yes", "y"}
-
-            if by_type:
-                totals = {}
-                for item_id, quantity in inventory.items():
-                    item_type, sep, _uid = item_id.partition(":")
-                    if not sep or not item_type:
-                        item_type = item_id
-                    totals[item_type] = totals.get(item_type, 0) + quantity
-                self._send_response(200, {"by_type": totals})
-            else:
-                self._send_response(200, {"items": inventory})
+            self._send_response(200, {"items": inventory})
         else:
             self._send_response(404, {"error": "Not Found"})
 
@@ -81,16 +69,11 @@ class APRequestHandler(BaseHTTPRequestHandler):
         # --- Follower Logic ---
         if not node_state.is_leader():
             # A follower should reject the request and inform the client.
-            # Option 1: Simple "Service Unavailable"
             error_body = {
                 "error": "Service Unavailable. This node is not the leader.",
                 "leader_hint": f"Current known leader is Node {node_state.leader_id}"
             }
             self._send_response(503, error_body)
-            # Option 2 (more advanced): Redirect to the known leader.
-            # self.send_response(307) # Temporary Redirect
-            # self.send_header('Location', f'http://{leader_http_addr}/update')
-            # self.end_headers()
             return
 
         # --- Leader Logic ---
@@ -127,12 +110,14 @@ class APIServer(threading.Thread):
     A thread that runs the HTTP server.
     """
     def __init__(self, config: AppConfig, node_state: NodeState, update_handler: UpdateHandler):
+        """Initialize the API server with shared state and handler."""
         super().__init__(daemon=True)
         self.server_address = (config.http_host, config.http_port)
         
         # Custom HTTPServer that holds references to our application state
         class CustomHTTPServer(HTTPServer):
             def __init__(self, *args, **kwargs):
+                """Attach application state and update handler to the server."""
                 self.node_state = node_state
                 self.update_handler = update_handler
                 super().__init__(*args, **kwargs)
@@ -141,10 +126,12 @@ class APIServer(threading.Thread):
         logger.info("HTTP API server will run on %s:%s", self.server_address[0], self.server_address[1])
 
     def run(self):
+        """Start serving HTTP requests until shutdown is called."""
         logger.info("Starting HTTP API server...")
         self.httpd.serve_forever()
 
     def stop(self):
+        """Stop the HTTP server and close its socket."""
         logger.info("Stopping HTTP API server...")
         self.httpd.shutdown()
         self.httpd.server_close()
@@ -162,6 +149,7 @@ if __name__ == '__main__':
     leader_state.set_role(ROLE_LEADER)
 
     def simple_update_handler(payload):
+        """Example update handler used for the demo runner."""
         logger.info("[Handler] Processing payload: %s", payload)
         ok = "item_id" in payload and "op" in payload and "quantity" in payload
         if ok:
