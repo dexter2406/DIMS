@@ -17,5 +17,3 @@ env/
 .DS_Store
 Thumbs.db
 
-# Tool specific
-.gemini/
