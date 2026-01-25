@@ -105,6 +105,10 @@ python -m client.scanner_simulator --op SHIP --type sku --start-no 1000 --num 5
 The simulator logs updates and automatically handles leader changes if a leader node fails and a new one is elected.
 
 
+### Test Case & Scenario
+
+See [test_cases.md](test_cases.md).
+
 ### Ports and Discovery
 
 - HTTP: per-node `--http-port` (default 8000).
