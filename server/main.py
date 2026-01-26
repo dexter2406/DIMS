@@ -148,8 +148,6 @@ class Node:
             elif msg_type == MSG_COORDINATOR:
                 self.election_manager.handle_coordinator_message(msg)
             elif msg_type == MSG_HEARTBEAT:
-                # In a more robust system, you'd update a 'last_seen' timestamp
-                # for the predecessor and use it to detect failures.
                 log.debug(f"Received heartbeat from predecessor: {msg.get('payload')}")
             else:
                 log.warning(f"Received unknown message type: {msg_type}")

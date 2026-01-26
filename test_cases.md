@@ -26,6 +26,12 @@ python -m client.scanner_simulator --op IN --type <item_name> --start-no <item_n
 """
 python -m client.scanner_simulator --op IN --type sku --start-no 1000 --num 5
 
+"""
+Observe inventory
+curl.exe -H "Connection: close"  http:/<IP>:<UDP_PORT>/inventory or status
+"""
+curl.exe -H "Connection: close"  http://192.168.178.87:8001/inventory # or status
+
 ```
 
 ### Normal Case – Case 2 (Concurrent Clients + Replication)

@@ -111,7 +111,7 @@ class APIServer(threading.Thread):
     """
     def __init__(self, config: AppConfig, node_state: NodeState, update_handler: UpdateHandler):
         """Initialize the API server with shared state and handler."""
-        super().__init__(daemon=True)
+        super().__init__(daemon=True)   # exit with main program
         self.server_address = (config.http_host, config.http_port)
         
         # Custom HTTPServer that holds references to our application state
