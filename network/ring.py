@@ -230,8 +230,7 @@ class TCPRingClient(threading.Thread):
         - or the smallest ID overall to "circle back".
         """
         active_nodes = discover_nodes(self.config)
-        others = [n for n in active_nodes if n['node_id'] != self.node_state.node_id]
-        
+        others = [n for n in active_nodes if n['node_id'] != self.node_state.node_id]   # get all
         if not others:
             return None
 

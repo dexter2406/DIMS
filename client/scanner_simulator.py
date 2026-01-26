@@ -92,7 +92,8 @@ def _send_sequence(
                 if status_code == 409:
                     logger.warning("Insufficient inventory for %s. Stopping.", item_id)
                     return
-
+                
+                # Leader rediscovery
                 if status_code in {0, 503}:
                     logger.warning("Update failed (status=%s). Rediscovering leader...", status_code)
                     if client.find_leader():

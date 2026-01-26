@@ -184,6 +184,7 @@ class Node:
             if not isinstance(quantity, int) or quantity <= 0:
                 return False, 400, {"error": "Invalid quantity. Expected positive integer."}
 
+            # 0. tentative check before logging
             ok, new_qty, err = self.state.apply_inventory_op(
                 item_id,
                 op,
@@ -205,7 +206,7 @@ class Node:
                 log.error("Failed to apply inventory op after WAL append: %s", err)
                 return False, 500, {"error": "Internal error applying inventory update."}
             
-            # 3. Trigger replication to followers
+            # 3. Trigger replication to the next (follower)
             replication_payload = {
                 "item_id": item_id,
                 "op": op,

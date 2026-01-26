@@ -133,7 +133,7 @@ def discover_nodes(config, timeout: float = 2.0) -> list:
     client_sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
     client_sock.settimeout(timeout)
 
-    query_msg = create_message(MSG_NODE_QUERY)
+    query_msg = create_message(MSG_NODE_QUERY)  # broadcast query to all in the subnet
     
     try:
         client_sock.sendto(query_msg, (config.udp_broadcast_addr, config.udp_discovery_port))
